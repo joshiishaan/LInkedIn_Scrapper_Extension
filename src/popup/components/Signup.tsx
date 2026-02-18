@@ -1,3 +1,8 @@
+/**
+ * Signup Component
+ * Handles user registration
+ */
+
 import { useState } from "react";
 import { authApi } from "../../services/api";
 
@@ -13,6 +18,7 @@ export default function Signup({ onAuth, onLogin }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Handle signup form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);

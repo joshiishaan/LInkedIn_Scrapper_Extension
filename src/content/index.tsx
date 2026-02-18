@@ -1,3 +1,9 @@
+/**
+ * Content Script - LinkedIn Profile Card Injector
+ * Injects ProfileCard component into LinkedIn profile pages
+ * Handles SPA navigation and dynamic DOM updates
+ */
+
 import React from "react";
 import ReactDOM from "react-dom/client";
 import ProfileCard from "../components/ProfileCard";
@@ -6,6 +12,7 @@ import ProfileCard from "../components/ProfileCard";
   let currentUrl = location.href;
   const observers: MutationObserver[] = [];
 
+  // Render React component into container
   function renderCard(container: HTMLElement) {
     ReactDOM.createRoot(container).render(
       <React.StrictMode>
@@ -14,6 +21,7 @@ import ProfileCard from "../components/ProfileCard";
     );
   }
 
+  // Insert card after target element on page
   function insertCard(targetDiv: Element) {
     let container = document.getElementById(
       "linkedin-extension-card",
@@ -28,6 +36,7 @@ import ProfileCard from "../components/ProfileCard";
     }
   }
 
+  // Watch for target element to appear in DOM
   function watchForTarget(selector: string) {
     const observer = new MutationObserver(() => {
       const target = document.querySelector(selector);
@@ -37,17 +46,20 @@ import ProfileCard from "../components/ProfileCard";
     observer.observe(document.body, { childList: true, subtree: true });
     observers.push(observer);
 
+    // Check if target already exists
     const target = document.querySelector(selector);
     if (target) insertCard(target);
   }
 
+  // Initialize card injection on profile pages
   function initInjection() {
     if (!window.location.href.includes("/in/")) return;
 
-    // Disconnect old observers
+    // Clean up old observers
     observers.forEach((obs) => obs.disconnect());
     observers.length = 0;
 
+    // LinkedIn profile page selectors
     const normalSelector =
       'div[componentkey*="com.linkedin.sdui.profile.card"]';
     const snSelector = "section[data-member-id]";
@@ -56,10 +68,12 @@ import ProfileCard from "../components/ProfileCard";
     watchForTarget(snSelector);
   }
 
+  // Detect URL changes in SPA
   const urlObserver = new MutationObserver(() => {
     if (location.href !== currentUrl) {
       currentUrl = location.href;
 
+      // Remove old card
       const oldCard = document.getElementById("linkedin-extension-card");
       oldCard?.remove();
 
@@ -69,5 +83,6 @@ import ProfileCard from "../components/ProfileCard";
 
   urlObserver.observe(document.body, { childList: true, subtree: true });
 
+  // Start injection
   initInjection();
 })();

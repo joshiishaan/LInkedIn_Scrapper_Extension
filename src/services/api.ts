@@ -1,3 +1,8 @@
+/**
+ * API Service Layer
+ * Handles all backend API calls for authentication, HubSpot integration, and LinkedIn data sync
+ */
+
 const API_BASE_URL = import.meta.env.VITE_SERVER_BASE_URL;
 
 interface User {
@@ -6,6 +11,7 @@ interface User {
   email: string;
 }
 
+// Get authorization headers with user token from storage
 const getAuthHeaders = async () => {
   const result = await chrome.storage.local.get(["user"]);
   const user = result.user as User | undefined;
@@ -15,7 +21,9 @@ const getAuthHeaders = async () => {
   };
 };
 
+// Authentication API endpoints
 export const authApi = {
+  // User login
   login: async (email: string, password: string) => {
     const response = await fetch(`${API_BASE_URL}/auth/login`, {
       method: "POST",
@@ -26,6 +34,7 @@ export const authApi = {
     return response.json();
   },
 
+  // User registration
   signup: async (name: string, email: string, password: string) => {
     const response = await fetch(`${API_BASE_URL}/auth/register`, {
       method: "POST",
@@ -36,6 +45,7 @@ export const authApi = {
     return response.json();
   },
 
+  // Password reset request
   resetPassword: async (email: string) => {
     const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
       method: "POST",
@@ -47,7 +57,9 @@ export const authApi = {
   },
 };
 
+// HubSpot integration API endpoints
 export const hubspotApi = {
+  // Check if HubSpot is connected
   checkStatus: async () => {
     const response = await fetch(`${API_BASE_URL}/hubspot/status`, {
       headers: await getAuthHeaders(),
@@ -57,6 +69,7 @@ export const hubspotApi = {
     return response.json();
   },
 
+  // Get HubSpot OAuth connection URL
   getConnectUrl: async () => {
     const response = await fetch(`${API_BASE_URL}/hubspot/connect`, {
       headers: await getAuthHeaders(),
@@ -66,7 +79,9 @@ export const hubspotApi = {
   },
 };
 
+// LinkedIn data sync API endpoints
 export const linkedinApi = {
+  // Check if profile is already synced to HubSpot
   checkSyncStatus: async (profileId: string) => {
     const response = await fetch(
       `${API_BASE_URL}/hubspot/check-profile?username=${profileId}`,
@@ -78,6 +93,7 @@ export const linkedinApi = {
     return response.json();
   },
 
+  // Save contact and company data to HubSpot
   saveContactAndCompany: async (payload: any) => {
     const response = await fetch(`${API_BASE_URL}/hubspot/sync-lead`, {
       method: "POST",

@@ -1,3 +1,8 @@
+/**
+ * CompanySelectionModal Component
+ * Modal dialog for selecting current company when user has multiple active positions
+ */
+
 interface Experience {
   title: string;
   company: string;
@@ -19,6 +24,7 @@ export default function CompanySelectionModal({
   onSelect,
   onClose,
 }: Props) {
+  // Format date object to readable string
   const formatDate = (date: any) => {
     if (!date) return "";
     const { month, year } = date;

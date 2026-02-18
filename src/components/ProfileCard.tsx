@@ -1,3 +1,9 @@
+/**
+ * ProfileCard Component
+ * Main UI component injected into LinkedIn profile pages
+ * Handles authentication, HubSpot connection, and profile data fetching
+ */
+
 import { useState, useEffect } from "react";
 import {
   fetchLinkedInProfile,
@@ -25,23 +31,30 @@ interface User {
 }
 
 export default function ProfileCard() {
+  // Loading states
   const [loading, setLoading] = useState(false);
-  const [currentCompanies, setCurrentCompanies] = useState<Experience[]>([]);
-  const [showModal, setShowModal] = useState(false);
   const [fetchingCompany, setFetchingCompany] = useState(false);
+  const [checking, setChecking] = useState(true);
+  const [checkingSync, setCheckingSync] = useState(false);
+  
+  // Data states
+  const [currentCompanies, setCurrentCompanies] = useState<Experience[]>([]);
   const [profileData, setProfileData] = useState<any>(null);
+  
+  // UI states
+  const [showModal, setShowModal] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isHubspotConnected, setIsHubspotConnected] = useState(false);
-  const [checking, setChecking] = useState(true);
   const [isSynced, setIsSynced] = useState(false);
-  const [checkingSync, setCheckingSync] = useState(false);
 
+  // Check sync status when URL changes or auth state changes
   useEffect(() => {
     if (isLoggedIn && isHubspotConnected) {
       checkSyncStatus();
     }
   }, [window.location.href, isLoggedIn, isHubspotConnected]);
 
+  // Check authentication status on mount and storage changes
   useEffect(() => {
     checkAuthStatus();
 
@@ -58,6 +71,7 @@ export default function ProfileCard() {
     };
   }, []);
 
+  // Verify user authentication and HubSpot connection
   const checkAuthStatus = async () => {
     setChecking(true);
     try {
@@ -80,15 +94,18 @@ export default function ProfileCard() {
     }
   };
 
+  // Open extension popup for login
   const handleLogin = () => {
     chrome.runtime.sendMessage({ action: "openPopup" });
   };
 
+  // Initiate HubSpot OAuth connection
   const handleConnectHubspot = async () => {
     try {
       const response = await hubspotApi.getConnectUrl();
       window.open(response.data.authUrl, "_blank", "width=600,height=700");
 
+      // Poll for connection status
       const interval = setInterval(async () => {
         try {
           const status = await hubspotApi.checkStatus();
@@ -101,6 +118,7 @@ export default function ProfileCard() {
         }
       }, 2000);
 
+      // Stop polling after 1 minute
       setTimeout(() => clearInterval(interval), 60000);
     } catch (err) {
       console.error("HubSpot connection failed:", err);
@@ -108,6 +126,7 @@ export default function ProfileCard() {
     }
   };
 
+  // Check if profile is already synced to HubSpot
   const checkSyncStatus = async () => {
     const profileId = getProfileIdFromUrl();
     if (!profileId) return;
@@ -124,12 +143,14 @@ export default function ProfileCard() {
     }
   };
 
+  // Format date range for experience display
   const formatDateRange = (start: any, end: any) => {
     const startYear = start?.year || "";
     const endYear = end?.year || "Present";
     return `${startYear} - ${endYear}`;
   };
 
+  // Fetch LinkedIn profile and handle current companies
   const handleFetchProfile = async () => {
     const profileId = getProfileIdFromUrl();
     if (!profileId) {
@@ -142,6 +163,7 @@ export default function ProfileCard() {
       const result = await fetchLinkedInProfile(profileId);
       setProfileData(result);
 
+      // Filter for current positions (no end date)
       const current = result.experience.filter(
         (exp: Experience) => !exp.endDate,
       );
@@ -151,6 +173,7 @@ export default function ProfileCard() {
       } else if (current.length === 1) {
         await fetchCompanyData(current[0], result);
       } else {
+        // Multiple current companies - show selection modal
         setCurrentCompanies(current);
         setShowModal(true);
       }
@@ -162,6 +185,7 @@ export default function ProfileCard() {
     }
   };
 
+  // Fetch company data and save to HubSpot
   const fetchCompanyData = async (experience: Experience, profile: any) => {
     if (!experience.companyUrl) {
       alert("Company URL not available");
@@ -177,6 +201,7 @@ export default function ProfileCard() {
 
       const companyData = await fetchLinkedInCompany(companyId);
 
+      // Build payload for backend
       const finalPayload = {
         contact: {
           name: `${profile.basicInfo.firstName} ${profile.basicInfo.lastName}`,
@@ -231,10 +256,12 @@ export default function ProfileCard() {
     }
   };
 
+  // Handle company selection from modal
   const handleCompanySelect = (experience: Experience) => {
     fetchCompanyData(experience, profileData);
   };
 
+  // Loading state UI
   if (checking) {
     return (
       <section
@@ -250,6 +277,7 @@ export default function ProfileCard() {
     );
   }
 
+  // Login required UI
   if (!isLoggedIn) {
     return (
       <section
@@ -299,6 +327,7 @@ export default function ProfileCard() {
     );
   }
 
+  // HubSpot connection required UI
   if (!isHubspotConnected) {
     return (
       <section
@@ -348,6 +377,7 @@ export default function ProfileCard() {
     );
   }
 
+  // Main UI - Fetch profile button with sync status
   return (
     <>
       <section
@@ -432,6 +462,7 @@ export default function ProfileCard() {
         </div>
       </section>
 
+      {/* Company selection modal for multiple current positions */}
       {showModal && (
         <CompanySelectionModal
           companies={currentCompanies}

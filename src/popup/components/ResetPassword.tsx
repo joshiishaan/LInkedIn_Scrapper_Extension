@@ -1,3 +1,8 @@
+/**
+ * ResetPassword Component
+ * Handles password reset requests
+ */
+
 import { useState } from "react";
 import { authApi } from "../../services/api";
 
@@ -11,6 +16,7 @@ export default function ResetPassword({ onBack }: Props) {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
 
+  // Handle password reset form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);

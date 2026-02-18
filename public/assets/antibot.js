@@ -1,3 +1,9 @@
+/**
+ * Anti-bot Script
+ * Bypasses LinkedIn's bot detection by intercepting fetch requests
+ * Injected into page context before LinkedIn scripts load
+ */
+
 function getCookie(name) {
   const cookies = `; ${document.cookie}`.split(`; ${name}=`);
   if (cookies.length === 2) return cookies.pop().split(";").shift();
@@ -10,6 +16,7 @@ window.EmberENV = { _DEBUG_RENDER_TREE: true };
 if (getCookie("li-protect") === "true" && !window.fetchReplaced) {
   window.fetchReplaced = true;
   
+  // Proxy fetch to intercept bot detection requests
   window.fetch = new Proxy(window.fetch, {
     apply: function (target, thisArg, args) {
       if (

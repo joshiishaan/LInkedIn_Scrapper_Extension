@@ -1,3 +1,8 @@
+/**
+ * Dashboard Component
+ * Shows user info and HubSpot connection status
+ */
+
 import { useState, useEffect } from "react";
 import { hubspotApi } from "../../services/api";
 
@@ -11,10 +16,12 @@ export default function Dashboard({ user, onLogout }: Props) {
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
 
+  // Check HubSpot connection on mount
   useEffect(() => {
     checkHubspotConnection();
   }, []);
 
+  // Verify HubSpot connection status
   const checkHubspotConnection = async () => {
     try {
       const response = await hubspotApi.checkStatus();
@@ -26,6 +33,7 @@ export default function Dashboard({ user, onLogout }: Props) {
     }
   };
 
+  // Initiate HubSpot OAuth flow
   const handleConnectHubspot = async () => {
     setConnecting(true);
     try {

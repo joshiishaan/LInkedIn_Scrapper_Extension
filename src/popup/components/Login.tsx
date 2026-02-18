@@ -1,3 +1,8 @@
+/**
+ * Login Component
+ * Handles user authentication
+ */
+
 import { useState } from "react";
 import { authApi } from "../../services/api";
 
@@ -13,6 +18,7 @@ export default function Login({ onAuth, onSignup, onReset }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Handle login form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);

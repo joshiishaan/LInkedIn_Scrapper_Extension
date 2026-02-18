@@ -1,9 +1,15 @@
-// Get CSRF token (CORRECT way)
+/**
+ * LinkedIn API Utilities
+ * Handles fetching profile and company data from LinkedIn's internal API
+ */
+
+// Extract CSRF token from cookies for authenticated requests
 function getCsrfToken(): string {
   const match = document.cookie.match(/JSESSIONID="([^"]+)"/);
   return match ? match[1] : "";
 }
 
+// Parse LinkedIn profile API response into structured data
 function parseProfileData(response: any) {
   const profile = response.elements?.[0];
 
@@ -67,6 +73,7 @@ function parseProfileData(response: any) {
   };
 }
 
+// Parse LinkedIn company API response into structured data
 function parseCompanyData(response: any) {
   const companyUrn = response.data?.["*elements"]?.[0];
   const company = response.included?.find(
@@ -110,6 +117,7 @@ function parseCompanyData(response: any) {
   };
 }
 
+// Fetch LinkedIn profile data using internal API
 export async function fetchLinkedInProfile(profileId: string) {
   const response = await fetch(
     `https://www.linkedin.com/voyager/api/identity/dash/profiles?q=memberIdentity&memberIdentity=${profileId}&decorationId=com.linkedin.voyager.dash.deco.identity.profile.FullProfileWithEntities-109`,
@@ -130,6 +138,7 @@ export async function fetchLinkedInProfile(profileId: string) {
   return parseProfileData(data);
 }
 
+// Fetch LinkedIn company data using internal API
 export async function fetchLinkedInCompany(companyId: string) {
   const response = await fetch(
     `https://www.linkedin.com/voyager/api/organization/companies?decorationId=com.linkedin.voyager.deco.organization.web.WebFullCompanyMain-12&q=universalName&universalName=${companyId}`,
@@ -148,21 +157,21 @@ export async function fetchLinkedInCompany(companyId: string) {
   return parseCompanyData(data);
 }
 
-// Extract profile ID from URL
+// Extract profile ID from current LinkedIn URL
 export function getProfileIdFromUrl(): string | null {
   const url = window.location.href;
   const match = url.match(/linkedin\.com\/in\/([^\/\?]+)/);
   return match ? match[1] : null;
 }
 
-// Extract company ID from URL ()- from company page
+// Extract company ID from current LinkedIn URL
 export function getCompanyIdFromUrl(): string | null {
   const url = window.location.href;
   const match = url.match(/linkedin\.com\/company\/([^\/\?]+)/);
   return match ? match[1] : null;
 }
 
-// Extract company ID from company URL
+// Extract company ID from any LinkedIn company URL
 export function extractCompanyIdFromUrl(url: string): string | null {
   const match = url.match(/linkedin\.com\/company\/([^\/\?]+)/);
   return match ? match[1] : null;

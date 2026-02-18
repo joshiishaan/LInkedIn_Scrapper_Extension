@@ -1,3 +1,8 @@
+/**
+ * Popup Root Component
+ * Manages authentication flow and dashboard views
+ */
+
 import { useState, useEffect } from "react";
 import Login from "./components/Login";
 import Signup from "./components/Signup";
@@ -10,6 +15,7 @@ export default function Popup() {
   const [view, setView] = useState<View>("login");
   const [user, setUser] = useState<any>(null);
 
+  // Check if user is already logged in
   useEffect(() => {
     chrome.storage.local.get(["user"], (result) => {
       if (result.user) {
@@ -19,12 +25,14 @@ export default function Popup() {
     });
   }, []);
 
+  // Handle successful authentication
   const handleAuth = (userData: any) => {
     setUser(userData);
     chrome.storage.local.set({ user: userData });
     setView("dashboard");
   };
 
+  // Handle user logout
   const handleLogout = () => {
     setUser(null);
     chrome.storage.local.remove("user");
