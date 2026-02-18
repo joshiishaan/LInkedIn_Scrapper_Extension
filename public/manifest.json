@@ -4,6 +4,10 @@
   "version": "1.0.0",
   "permissions": ["storage", "tabs", "cookies", "scripting"],
   "host_permissions": ["https://linkedin.com/*", "https://*.linkedin.com/*"],
+  "action": {
+    "default_popup": "/public/popup.html",
+    "default_icon": "icon.png"
+  },
   "background": {
     "service_worker": "background.js"
   },
