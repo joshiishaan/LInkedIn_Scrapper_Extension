@@ -1,0 +1,444 @@
+import { useState, useEffect } from "react";
+import {
+  fetchLinkedInProfile,
+  fetchLinkedInCompany,
+  getProfileIdFromUrl,
+  extractCompanyIdFromUrl,
+} from "../utils/linkedinApi";
+import { linkedinApi, hubspotApi } from "../services/api";
+import CompanySelectionModal from "./CompanySelectionModal";
+
+interface Experience {
+  title: string;
+  company: string;
+  companyUrl?: string;
+  location: string;
+  startDate: any;
+  endDate: any;
+  employmentType: string;
+}
+
+interface User {
+  token: string;
+  name: string;
+  email: string;
+}
+
+export default function ProfileCard() {
+  const [loading, setLoading] = useState(false);
+  const [currentCompanies, setCurrentCompanies] = useState<Experience[]>([]);
+  const [showModal, setShowModal] = useState(false);
+  const [fetchingCompany, setFetchingCompany] = useState(false);
+  const [profileData, setProfileData] = useState<any>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isHubspotConnected, setIsHubspotConnected] = useState(false);
+  const [checking, setChecking] = useState(true);
+  const [isSynced, setIsSynced] = useState(false);
+  const [checkingSync, setCheckingSync] = useState(false);
+
+  useEffect(() => {
+    if (isLoggedIn && isHubspotConnected) {
+      checkSyncStatus();
+    }
+  }, [window.location.href, isLoggedIn, isHubspotConnected]);
+
+  useEffect(() => {
+    checkAuthStatus();
+
+    const handleStorageChange = (changes: any) => {
+      if (changes.user) {
+        checkAuthStatus();
+      }
+    };
+
+    chrome.storage.onChanged.addListener(handleStorageChange);
+
+    return () => {
+      chrome.storage.onChanged.removeListener(handleStorageChange);
+    };
+  }, []);
+
+  const checkAuthStatus = async () => {
+    setChecking(true);
+    try {
+      const result = await chrome.storage.local.get(["user"]);
+      const user = result.user as User | undefined;
+      if (user?.token) {
+        setIsLoggedIn(true);
+        const status = await hubspotApi.checkStatus();
+        setIsHubspotConnected(status.data.connected);
+      } else {
+        setIsLoggedIn(false);
+        setIsHubspotConnected(false);
+      }
+    } catch (err) {
+      console.error("Auth check failed:", err);
+      setIsLoggedIn(false);
+      setIsHubspotConnected(false);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const handleLogin = () => {
+    chrome.runtime.sendMessage({ action: "openPopup" });
+  };
+
+  const handleConnectHubspot = async () => {
+    try {
+      const response = await hubspotApi.getConnectUrl();
+      window.open(response.data.authUrl, "_blank", "width=600,height=700");
+
+      const interval = setInterval(async () => {
+        try {
+          const status = await hubspotApi.checkStatus();
+          if (status.data.connected) {
+            setIsHubspotConnected(true);
+            clearInterval(interval);
+          }
+        } catch (err) {
+          console.error("Status check failed:", err);
+        }
+      }, 2000);
+
+      setTimeout(() => clearInterval(interval), 60000);
+    } catch (err) {
+      console.error("HubSpot connection failed:", err);
+      alert("Failed to connect HubSpot");
+    }
+  };
+
+  const checkSyncStatus = async () => {
+    const profileId = getProfileIdFromUrl();
+    if (!profileId) return;
+
+    setCheckingSync(true);
+    try {
+      const response = await linkedinApi.checkSyncStatus(profileId);
+      setIsSynced(response.data.synced || false);
+    } catch (err) {
+      console.error("Sync check failed:", err);
+      setIsSynced(false);
+    } finally {
+      setCheckingSync(false);
+    }
+  };
+
+  const formatDateRange = (start: any, end: any) => {
+    const startYear = start?.year || "";
+    const endYear = end?.year || "Present";
+    return `${startYear} - ${endYear}`;
+  };
+
+  const handleFetchProfile = async () => {
+    const profileId = getProfileIdFromUrl();
+    if (!profileId) {
+      console.error("No profile ID found");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await fetchLinkedInProfile(profileId);
+      setProfileData(result);
+
+      const current = result.experience.filter(
+        (exp: Experience) => !exp.endDate,
+      );
+
+      if (current.length === 0) {
+        alert("No current companies found");
+      } else if (current.length === 1) {
+        await fetchCompanyData(current[0], result);
+      } else {
+        setCurrentCompanies(current);
+        setShowModal(true);
+      }
+    } catch (err) {
+      console.error("Error fetching profile:", err);
+      alert("Failed to fetch profile data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchCompanyData = async (experience: Experience, profile: any) => {
+    if (!experience.companyUrl) {
+      alert("Company URL not available");
+      return;
+    }
+
+    setFetchingCompany(true);
+    try {
+      const companyId = extractCompanyIdFromUrl(experience.companyUrl);
+      if (!companyId) {
+        throw new Error("Could not extract company ID");
+      }
+
+      const companyData = await fetchLinkedInCompany(companyId);
+
+      const finalPayload = {
+        contact: {
+          name: `${profile.basicInfo.firstName} ${profile.basicInfo.lastName}`,
+          profileUrl: window.location.href,
+          publicProfileUrl: `https://linkedin.com/in/${profile.basicInfo.publicIdentifier}`,
+          headline: profile.basicInfo.headline || "",
+          selectedRole: experience.title || "",
+          selectedCompany: experience.company || "",
+          email: "",
+          phone: "",
+          website: "",
+          locationCity: profile.basicInfo.location?.split(",")[0]?.trim() || "",
+          locationState:
+            profile.basicInfo.location?.split(",")[1]?.trim() || "",
+          locationCountry:
+            profile.basicInfo.location?.split(",")[2]?.trim() || "",
+          hubspotLeadStatus: "New",
+          hubspotConnectedOnSource: "LinkedIn",
+          hubspotLeadSource: "Outbound",
+          experiences: profile.experience.map((exp: any) => ({
+            role: exp.title || "",
+            companyLine: exp.company || "",
+            dates: formatDateRange(exp.startDate, exp.endDate),
+            location: exp.location || "",
+          })),
+        },
+        company: {
+          name: companyData.basicInfo.name || "",
+          companyUrl: experience.companyUrl || "",
+          linkedinCompanyId: companyId || "",
+          website: companyData.basicInfo.website || "",
+          locationCity: companyData.basicInfo.headquarters?.city || "",
+          locationState:
+            companyData.basicInfo.headquarters?.geographicArea || "",
+          locationCountry: companyData.basicInfo.headquarters?.country || "",
+          employeeCount: companyData.basicInfo.companySize?.start || 0,
+          industry: companyData.basicInfo.industry || "",
+        },
+      };
+
+      console.log("Final Payload:", finalPayload);
+      setIsSynced(true);
+
+      await linkedinApi.saveContactAndCompany(finalPayload);
+      alert("Data saved successfully!");
+    } catch (err) {
+      console.error("Error:", err);
+      alert("Failed to save data");
+    } finally {
+      setFetchingCompany(false);
+      setShowModal(false);
+    }
+  };
+
+  const handleCompanySelect = (experience: Experience) => {
+    fetchCompanyData(experience, profileData);
+  };
+
+  if (checking) {
+    return (
+      <section
+        style={{
+          background: "white",
+          borderRadius: "8px",
+          padding: "20px 24px",
+          boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.1)",
+        }}
+      >
+        <p style={{ margin: 0, color: "#666", fontSize: "14px" }}>Loading...</p>
+      </section>
+    );
+  }
+
+  if (!isLoggedIn) {
+    return (
+      <section
+        style={{
+          background: "white",
+          borderRadius: "8px",
+          padding: "20px 24px",
+          boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.1)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "16px",
+          }}
+        >
+          <h3
+            style={{
+              fontSize: "16px",
+              fontWeight: 600,
+              color: "#000000e6",
+              margin: 0,
+              lineHeight: "1.5",
+            }}
+          >
+            Please login to use LinkedIn Scraper
+          </h3>
+          <button
+            onClick={handleLogin}
+            style={{
+              padding: "10px 20px",
+              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              color: "white",
+              border: "none",
+              borderRadius: "16px",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: 600,
+            }}
+          >
+            Login
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  if (!isHubspotConnected) {
+    return (
+      <section
+        style={{
+          background: "white",
+          borderRadius: "8px",
+          padding: "20px 24px",
+          boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.1)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "16px",
+          }}
+        >
+          <h3
+            style={{
+              fontSize: "16px",
+              fontWeight: 600,
+              color: "#000000e6",
+              margin: 0,
+              lineHeight: "1.5",
+            }}
+          >
+            Connect HubSpot to save contacts
+          </h3>
+          <button
+            onClick={handleConnectHubspot}
+            style={{
+              padding: "10px 20px",
+              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              color: "white",
+              border: "none",
+              borderRadius: "16px",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: 600,
+            }}
+          >
+            Connect HubSpot
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <>
+      <section
+        style={{
+          background: "white",
+          borderRadius: "8px",
+          padding: "20px 24px",
+          boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.1)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "16px",
+          }}
+        >
+          <h3
+            style={{
+              fontSize: "16px",
+              fontWeight: 600,
+              color: "#000000e6",
+              margin: 0,
+              lineHeight: "1.5",
+            }}
+          >
+            LinkedIn Scraper
+          </h3>
+          <button
+            onClick={handleFetchProfile}
+            disabled={loading || fetchingCompany || isSynced || checkingSync}
+            style={{
+              padding: "10px 20px",
+              background: isSynced
+                ? "#10b981"
+                : loading || fetchingCompany || checkingSync
+                  ? "#cbd5e0"
+                  : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              color: "white",
+              border: "none",
+              borderRadius: "16px",
+              cursor:
+                loading || fetchingCompany || isSynced || checkingSync
+                  ? "not-allowed"
+                  : "pointer",
+              fontSize: "14px",
+              fontWeight: 600,
+              transition: "all 0.2s",
+              whiteSpace: "nowrap",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+            onMouseEnter={(e) => {
+              if (!loading && !fetchingCompany && !isSynced && !checkingSync) {
+                e.currentTarget.style.transform = "translateY(-1px)";
+                e.currentTarget.style.boxShadow =
+                  "0 4px 8px rgba(102, 126, 234, 0.3)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = "none";
+            }}
+          >
+            {checkingSync ? (
+              "Checking..."
+            ) : isSynced ? (
+              <>
+                <span>✓</span>
+                <span>Synced</span>
+              </>
+            ) : loading ? (
+              "Fetching..."
+            ) : fetchingCompany ? (
+              "Loading Company..."
+            ) : (
+              "Fetch Profile"
+            )}
+          </button>
+        </div>
+      </section>
+
+      {showModal && (
+        <CompanySelectionModal
+          companies={currentCompanies}
+          onSelect={handleCompanySelect}
+          onClose={() => setShowModal(false)}
+        />
+      )}
+    </>
+  );
+}

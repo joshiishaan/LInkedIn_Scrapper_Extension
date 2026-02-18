@@ -65,3 +65,26 @@ export const hubspotApi = {
     return response.json();
   },
 };
+
+export const linkedinApi = {
+  checkSyncStatus: async (profileId: string) => {
+    const response = await fetch(
+      `${API_BASE_URL}/hubspot/check-profile?username=${profileId}`,
+      {
+        headers: await getAuthHeaders(),
+      },
+    );
+    if (!response.ok) throw new Error("Failed to check sync status");
+    return response.json();
+  },
+
+  saveContactAndCompany: async (payload: any) => {
+    const response = await fetch(`${API_BASE_URL}/hubspot/sync-lead`, {
+      method: "POST",
+      headers: await getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error("Failed to save data");
+    return response.json();
+  },
+};

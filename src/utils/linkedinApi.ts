@@ -155,9 +155,15 @@ export function getProfileIdFromUrl(): string | null {
   return match ? match[1] : null;
 }
 
-// Extract company ID from URL
+// Extract company ID from URL ()- from company page
 export function getCompanyIdFromUrl(): string | null {
   const url = window.location.href;
+  const match = url.match(/linkedin\.com\/company\/([^\/\?]+)/);
+  return match ? match[1] : null;
+}
+
+// Extract company ID from company URL
+export function extractCompanyIdFromUrl(url: string): string | null {
   const match = url.match(/linkedin\.com\/company\/([^\/\?]+)/);
   return match ? match[1] : null;
 }
