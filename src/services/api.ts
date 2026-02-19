@@ -64,7 +64,6 @@ export const hubspotApi = {
     const response = await fetch(`${API_BASE_URL}/hubspot/status`, {
       headers: await getAuthHeaders(),
     });
-    console.log(response);
     if (!response.ok) throw new Error("Failed to check status");
     return response.json();
   },
@@ -75,6 +74,29 @@ export const hubspotApi = {
       headers: await getAuthHeaders(),
     });
     if (!response.ok) throw new Error("Failed to get connect URL");
+    return response.json();
+  },
+
+  // Get property options for dropdowns (Owner, Lifecycle)
+  getPropertyOptions: async () => {
+    const response = await fetch(`${API_BASE_URL}/hubspot/property-options`, {
+      headers: await getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error("Failed to get property options");
+    return response.json();
+  },
+
+  // Update CRM contact fields
+  updateContact: async (payload: any, username: string) => {
+    const response = await fetch(
+      `${API_BASE_URL}/hubspot/update-contact?username=${username}`,
+      {
+        method: "PATCH",
+        headers: await getAuthHeaders(),
+        body: JSON.stringify(payload),
+      },
+    );
+    if (!response.ok) throw new Error("Failed to update contact");
     return response.json();
   },
 };

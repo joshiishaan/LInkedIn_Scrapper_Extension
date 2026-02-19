@@ -21,7 +21,7 @@ export default function App() {
     try {
       const result = await fetchLinkedInProfile(profileId);
       setData(result);
-      console.log("Profile data:", result);
+      // console.log("Profile data:", result);
     } catch (err) {
       console.error("Error:", err);
       alert("Failed to fetch profile");
@@ -41,7 +41,7 @@ export default function App() {
     try {
       const result = await fetchLinkedInCompany(companyId);
       setData(result);
-      console.log("Company data:", result);
+      // console.log("Company data:", result);
     } catch (err) {
       console.error("Error:", err);
       alert("Failed to fetch company");

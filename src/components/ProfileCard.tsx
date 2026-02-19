@@ -13,6 +13,7 @@ import {
 } from "../utils/linkedinApi";
 import { linkedinApi, hubspotApi } from "../services/api";
 import CompanySelectionModal from "./CompanySelectionModal";
+import SyncedProfileView from "./SyncedProfileView";
 
 interface Experience {
   title: string;
@@ -30,29 +31,39 @@ interface User {
   email: string;
 }
 
+interface SyncedData {
+  contactName: string;
+  companyName: string;
+  email: string;
+  ownerName?: string;
+  lifecycle?: string;
+  phone?: string;
+}
+
 export default function ProfileCard() {
   // Loading states
   const [loading, setLoading] = useState(false);
   const [fetchingCompany, setFetchingCompany] = useState(false);
   const [checking, setChecking] = useState(true);
-  const [checkingSync, setCheckingSync] = useState(false);
-  
+  const [checkingSync, setCheckingSync] = useState(true);
+
   // Data states
   const [currentCompanies, setCurrentCompanies] = useState<Experience[]>([]);
   const [profileData, setProfileData] = useState<any>(null);
-  
+
   // UI states
   const [showModal, setShowModal] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isHubspotConnected, setIsHubspotConnected] = useState(false);
-  const [isSynced, setIsSynced] = useState(false);
+  // const [isSynced, setIsSynced] = useState(false);
+  const [syncedData, setSyncedData] = useState<SyncedData | null>(null);
 
   // Check sync status when URL changes or auth state changes
   useEffect(() => {
     if (isLoggedIn && isHubspotConnected) {
       checkSyncStatus();
     }
-  }, [window.location.href, isLoggedIn, isHubspotConnected]);
+  }, [isLoggedIn, isHubspotConnected]);
 
   // Check authentication status on mount and storage changes
   useEffect(() => {
@@ -84,11 +95,13 @@ export default function ProfileCard() {
       } else {
         setIsLoggedIn(false);
         setIsHubspotConnected(false);
+        setCheckingSync(false);
       }
     } catch (err) {
       console.error("Auth check failed:", err);
       setIsLoggedIn(false);
       setIsHubspotConnected(false);
+      setCheckingSync(false);
     } finally {
       setChecking(false);
     }
@@ -134,10 +147,21 @@ export default function ProfileCard() {
     setCheckingSync(true);
     try {
       const response = await linkedinApi.checkSyncStatus(profileId);
-      setIsSynced(response.data.synced || false);
+      if (response.data.synced && response.data.exists) {
+        setSyncedData({
+          contactName: response.data.name || "",
+          companyName: response.data.company || "",
+          email: response.data.email || "",
+          ownerName: response.data.owner || "",
+          lifecycle: response.data.lifecycle || "",
+          phone: response.data.phone || "",
+        });
+      } else {
+        setSyncedData(null);
+      }
     } catch (err) {
       console.error("Sync check failed:", err);
-      setIsSynced(false);
+      setSyncedData(null);
     } finally {
       setCheckingSync(false);
     }
@@ -242,11 +266,14 @@ export default function ProfileCard() {
         },
       };
 
-      console.log("Final Payload:", finalPayload);
-      setIsSynced(true);
-
       await linkedinApi.saveContactAndCompany(finalPayload);
-      alert("Data saved successfully!");
+
+      setSyncedData({
+        contactName: finalPayload.contact.name,
+        companyName: finalPayload.company.name,
+        email: finalPayload.contact.email,
+        phone: finalPayload.contact.phone,
+      });
     } catch (err) {
       console.error("Error:", err);
       alert("Failed to save data");
@@ -262,14 +289,15 @@ export default function ProfileCard() {
   };
 
   // Loading state UI
-  if (checking) {
+  if (checking || checkingSync) {
     return (
       <section
         style={{
           background: "white",
           borderRadius: "8px",
           padding: "20px 24px",
-          boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.1)",
+          border: "1px solid rgba(0,0,0,0.15)",
+          marginTop: "8px",
         }}
       >
         <p style={{ margin: 0, color: "#666", fontSize: "14px" }}>Loading...</p>
@@ -285,7 +313,8 @@ export default function ProfileCard() {
           background: "white",
           borderRadius: "8px",
           padding: "20px 24px",
-          boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.1)",
+          border: "1px solid rgba(0,0,0,0.15)",
+          marginTop: "8px",
         }}
       >
         <div
@@ -335,7 +364,8 @@ export default function ProfileCard() {
           background: "white",
           borderRadius: "8px",
           padding: "20px 24px",
-          boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.1)",
+          border: "1px solid rgba(0,0,0,0.15)",
+          marginTop: "8px",
         }}
       >
         <div
@@ -377,6 +407,11 @@ export default function ProfileCard() {
     );
   }
 
+  if (syncedData) {
+    const username = getProfileIdFromUrl() || "";
+    return <SyncedProfileView {...syncedData} username={username} />;
+  }
+
   // Main UI - Fetch profile button with sync status
   return (
     <>
@@ -385,7 +420,8 @@ export default function ProfileCard() {
           background: "white",
           borderRadius: "8px",
           padding: "20px 24px",
-          boxShadow: "0 0 0 1px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.1)",
+          border: "1px solid rgba(0,0,0,0.15)",
+          marginTop: "8px",
         }}
       >
         <div
@@ -409,21 +445,17 @@ export default function ProfileCard() {
           </h3>
           <button
             onClick={handleFetchProfile}
-            disabled={loading || fetchingCompany || isSynced || checkingSync}
+            disabled={loading || fetchingCompany}
             style={{
               padding: "10px 20px",
-              background: isSynced
-                ? "#10b981"
-                : loading || fetchingCompany || checkingSync
+              background:
+                loading || fetchingCompany
                   ? "#cbd5e0"
                   : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
               color: "white",
               border: "none",
               borderRadius: "16px",
-              cursor:
-                loading || fetchingCompany || isSynced || checkingSync
-                  ? "not-allowed"
-                  : "pointer",
+              cursor: loading || fetchingCompany ? "not-allowed" : "pointer",
               fontSize: "14px",
               fontWeight: 600,
               transition: "all 0.2s",
@@ -433,7 +465,7 @@ export default function ProfileCard() {
               gap: "8px",
             }}
             onMouseEnter={(e) => {
-              if (!loading && !fetchingCompany && !isSynced && !checkingSync) {
+              if (!loading && !fetchingCompany) {
                 e.currentTarget.style.transform = "translateY(-1px)";
                 e.currentTarget.style.boxShadow =
                   "0 4px 8px rgba(102, 126, 234, 0.3)";
@@ -444,20 +476,11 @@ export default function ProfileCard() {
               e.currentTarget.style.boxShadow = "none";
             }}
           >
-            {checkingSync ? (
-              "Checking..."
-            ) : isSynced ? (
-              <>
-                <span>✓</span>
-                <span>Synced</span>
-              </>
-            ) : loading ? (
-              "Fetching..."
-            ) : fetchingCompany ? (
-              "Loading Company..."
-            ) : (
-              "Fetch Profile"
-            )}
+            {loading
+              ? "Fetching..."
+              : fetchingCompany
+                ? "Loading Company..."
+                : "Fetch Profile"}
           </button>
         </div>
       </section>
