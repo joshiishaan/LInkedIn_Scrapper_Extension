@@ -538,13 +538,29 @@ export default function SyncedProfileView({
               style={{
                 fontSize: "14px",
                 color: "#000000e6",
+
+                // Reset ALL borders
                 border: "none",
+                borderTop: "none",
+                borderLeft: "none",
+                borderRight: "none",
+
+                // Only control bottom border
                 borderBottom: isEmailFocused
                   ? "2px solid #0073b1"
                   : isEmailHovered
                     ? "1px solid #999"
                     : "1px solid transparent",
+
                 outline: "none",
+
+                // Remove browser default styling
+                appearance: "none",
+                WebkitAppearance: "none",
+                MozAppearance: "none",
+
+                boxShadow: "none",
+
                 padding: "4px 0",
                 background: "transparent",
                 width: isEmailFocused ? "250px" : "auto",
@@ -593,13 +609,27 @@ export default function SyncedProfileView({
               style={{
                 fontSize: "14px",
                 color: editableMobile ? "#000000e6" : "#0073b1",
+
                 border: "none",
+                borderTop: "none",
+                borderLeft: "none",
+                borderRight: "none",
+
                 borderBottom: isMobileFocused
                   ? "2px solid #0073b1"
                   : isMobileHovered
                     ? "1px solid #999"
                     : "1px solid transparent",
+
                 outline: "none",
+
+                // Remove browser default appearance
+                appearance: "none",
+                WebkitAppearance: "none",
+                MozAppearance: "none",
+
+                boxShadow: "none",
+
                 padding: "4px 0",
                 background: "transparent",
                 width: isMobileFocused ? "250px" : "auto",
