@@ -3,6 +3,8 @@
  * Modal dialog for selecting current company when user has multiple active positions
  */
 
+import { useState } from "react";
+
 interface Experience {
   title: string;
   company: string;
@@ -24,6 +26,10 @@ export default function CompanySelectionModal({
   onSelect,
   onClose,
 }: Props) {
+  const [selectedCompany, setSelectedCompany] = useState<Experience | null>(
+    null,
+  );
+
   // Format date object to readable string
   const formatDate = (date: any) => {
     if (!date) return "";
@@ -43,6 +49,13 @@ export default function CompanySelectionModal({
       "Dec",
     ];
     return `${months[month - 1] || ""} ${year || ""}`.trim();
+  };
+
+  const handleConfirm = () => {
+    if (selectedCompany) {
+      onSelect(selectedCompany);
+      onClose();
+    }
   };
 
   return (
@@ -69,7 +82,8 @@ export default function CompanySelectionModal({
           maxWidth: "600px",
           width: "100%",
           maxHeight: "80vh",
-          overflow: "auto",
+          display: "flex",
+          flexDirection: "column",
           boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
         }}
         onClick={(e) => e.stopPropagation()}
@@ -78,10 +92,6 @@ export default function CompanySelectionModal({
           style={{
             padding: "20px 24px",
             borderBottom: "1px solid #e5e7eb",
-            position: "sticky",
-            top: 0,
-            background: "white",
-            zIndex: 1,
           }}
         >
           <div
@@ -132,30 +142,35 @@ export default function CompanySelectionModal({
           </p>
         </div>
 
-        <div style={{ padding: "16px" }}>
+        <div style={{ padding: "16px", overflow: "auto", flex: 1 }}>
           {companies.map((exp, index) => (
             <div
               key={index}
-              onClick={() => onSelect(exp)}
+              onClick={() => setSelectedCompany(exp)}
               style={{
                 padding: "16px",
-                border: "1px solid #e5e7eb",
+                border:
+                  selectedCompany === exp
+                    ? "2px solid #667eea"
+                    : "1px solid #e5e7eb",
                 borderRadius: "8px",
                 marginBottom: "12px",
                 cursor: "pointer",
                 transition: "all 0.2s",
-                background: "white",
+                background: selectedCompany === exp ? "#f0f4ff" : "white",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "#667eea";
-                e.currentTarget.style.boxShadow =
-                  "0 4px 12px rgba(102, 126, 234, 0.15)";
-                e.currentTarget.style.transform = "translateY(-2px)";
+                if (selectedCompany !== exp) {
+                  e.currentTarget.style.borderColor = "#667eea";
+                  e.currentTarget.style.boxShadow =
+                    "0 4px 12px rgba(102, 126, 234, 0.15)";
+                }
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "#e5e7eb";
-                e.currentTarget.style.boxShadow = "none";
-                e.currentTarget.style.transform = "translateY(0)";
+                if (selectedCompany !== exp) {
+                  e.currentTarget.style.borderColor = "#e5e7eb";
+                  e.currentTarget.style.boxShadow = "none";
+                }
               }}
             >
               <div
@@ -214,23 +229,95 @@ export default function CompanySelectionModal({
                     {formatDate(exp.startDate)} - Present
                   </p>
                 </div>
-                <div
-                  style={{
-                    padding: "6px 12px",
-                    background:
-                      "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                    color: "white",
-                    borderRadius: "16px",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Select
-                </div>
+                {selectedCompany === exp && (
+                  <div
+                    style={{
+                      width: "24px",
+                      height: "24px",
+                      borderRadius: "50%",
+                      background: "#667eea",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <path
+                        d="M13.333 4L6 11.333 2.667 8"
+                        stroke="white"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </div>
+                )}
               </div>
             </div>
           ))}
+        </div>
+
+        <div
+          style={{
+            padding: "16px 24px",
+            borderTop: "1px solid #e5e7eb",
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: "12px",
+          }}
+        >
+          <button
+            onClick={onClose}
+            style={{
+              padding: "10px 20px",
+              background: "white",
+              color: "#666",
+              border: "1px solid #e5e7eb",
+              borderRadius: "16px",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: 600,
+              transition: "all 0.2s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "#f3f4f6";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "white";
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={!selectedCompany}
+            style={{
+              padding: "10px 20px",
+              background: selectedCompany
+                ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+                : "#cbd5e0",
+              color: "white",
+              border: "none",
+              borderRadius: "16px",
+              cursor: selectedCompany ? "pointer" : "not-allowed",
+              fontSize: "14px",
+              fontWeight: 600,
+              transition: "all 0.2s",
+            }}
+            onMouseEnter={(e) => {
+              if (selectedCompany) {
+                e.currentTarget.style.transform = "translateY(-1px)";
+                e.currentTarget.style.boxShadow =
+                  "0 4px 8px rgba(102, 126, 234, 0.3)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = "none";
+            }}
+          >
+            Confirm
+          </button>
         </div>
       </div>
     </div>
