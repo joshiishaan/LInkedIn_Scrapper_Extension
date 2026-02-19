@@ -10,6 +10,7 @@ import {
   fetchLinkedInCompany,
   getProfileIdFromUrl,
   extractCompanyIdFromUrl,
+  // fetchLinkedInContactInfo,
 } from "../utils/linkedinApi";
 import { linkedinApi, hubspotApi } from "../services/api";
 import CompanySelectionModal from "./CompanySelectionModal";
@@ -118,21 +119,31 @@ export default function ProfileCard() {
       const response = await hubspotApi.getConnectUrl();
       window.open(response.data.authUrl, "_blank", "width=600,height=700");
 
-      // Poll for connection status
-      const interval = setInterval(async () => {
+      const intervalRef = { current: 0 };
+      const timeoutRef = { current: 0 };
+
+      intervalRef.current = setInterval(async () => {
         try {
           const status = await hubspotApi.checkStatus();
           if (status.data.connected) {
             setIsHubspotConnected(true);
-            clearInterval(interval);
+            clearInterval(intervalRef.current);
+            clearTimeout(timeoutRef.current);
           }
         } catch (err) {
           console.error("Status check failed:", err);
         }
       }, 2000);
 
-      // Stop polling after 1 minute
-      setTimeout(() => clearInterval(interval), 60000);
+      timeoutRef.current = setTimeout(() => {
+        clearInterval(intervalRef.current);
+      }, 60000);
+
+      // Cleanup on unmount
+      return () => {
+        clearInterval(intervalRef.current);
+        clearTimeout(timeoutRef.current);
+      };
     } catch (err) {
       console.error("HubSpot connection failed:", err);
       alert("Failed to connect HubSpot");
@@ -224,6 +235,9 @@ export default function ProfileCard() {
       }
 
       const companyData = await fetchLinkedInCompany(companyId);
+      // const contactInfo = await fetchLinkedInContactInfo(
+      //   profile.basicInfo.publicIdentifier,
+      // );
 
       // Build payload for backend
       const finalPayload = {
@@ -234,6 +248,9 @@ export default function ProfileCard() {
           headline: profile.basicInfo.headline || "",
           selectedRole: experience.title || "",
           selectedCompany: experience.company || "",
+          // email: contactInfo.email,
+          // phone: contactInfo.phone,
+          // website: contactInfo.websites?.[0] || "",
           email: "",
           phone: "",
           website: "",

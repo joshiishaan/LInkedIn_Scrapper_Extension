@@ -16,6 +16,15 @@ function parseProfileData(response: any) {
   if (!profile) {
     throw new Error("No profile data found");
   }
+  const vectorImage =
+    profile.profilePicture?.displayImageReference?.vectorImage;
+  const artifacts = vectorImage?.artifacts;
+  const artifact = artifacts?.[2] || artifacts?.[0];
+
+  const profilePicture =
+    vectorImage?.rootUrl && artifact?.fileIdentifyingUrlPathSegment
+      ? vectorImage.rootUrl + artifact.fileIdentifyingUrlPathSegment
+      : null;
 
   return {
     basicInfo: {
@@ -26,10 +35,7 @@ function parseProfileData(response: any) {
       publicIdentifier: profile.publicIdentifier,
       location: profile.geoLocation?.geo?.defaultLocalizedName,
       industry: profile.industry?.name,
-      profilePicture:
-        profile.profilePicture?.displayImageReference?.vectorImage?.rootUrl +
-        profile.profilePicture?.displayImageReference?.vectorImage
-          ?.artifacts?.[2]?.fileIdentifyingUrlPathSegment,
+      profilePicture,
     },
 
     experience:
@@ -86,13 +92,19 @@ function parseCompanyData(response: any) {
     throw new Error("No company data found");
   }
 
+  // Resolve industry URN
+  const industryUrn = company["*companyIndustries"]?.[0];
+  const industryObj = response.included?.find(
+    (item: any) => item.entityUrn === industryUrn,
+  );
+
   return {
     basicInfo: {
       name: company.name,
       tagline: company.tagline,
       description: company.description,
       website: company.companyPageUrl,
-      industry: company["*companyIndustries"]?.[0],
+      industry: industryObj?.localizedName || null,
       companySize: company.staffCountRange,
       headquarters: company.headquarter,
       foundedYear: company.foundedOn?.year,
@@ -138,6 +150,35 @@ export async function fetchLinkedInProfile(profileId: string) {
   return parseProfileData(data);
 }
 
+// Fetch LinkedIn profile contact info using internal API
+export async function fetchLinkedInContactInfo(profileId: string) {
+  const response = await fetch(
+    `https://www.linkedin.com/voyager/api/identity/profiles/${profileId}/profileContactInfo?decorationId=com.linkedin.voyager.dash.deco.identity.profile.ProfileContactInfo-8`,
+    {
+      headers: {
+        "csrf-token": getCsrfToken(),
+        "x-restli-protocol-version": "2.0.0",
+      },
+      credentials: "include",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+
+  return {
+    email: data.emailAddress || "",
+    phone: data.phoneNumbers?.[0]?.number || "",
+    websites: data.websites || [],
+    twitter: data.twitterHandles?.[0] || "",
+    birthDate: data.birthDateOn || null,
+    address: data.address || "",
+  };
+}
+
 // Fetch LinkedIn company data using internal API
 export async function fetchLinkedInCompany(companyId: string) {
   const response = await fetch(
@@ -152,6 +193,10 @@ export async function fetchLinkedInCompany(companyId: string) {
       credentials: "include",
     },
   );
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
 
   const data = await response.json();
   return parseCompanyData(data);
