@@ -40,6 +40,7 @@ interface SyncedData {
   ownerName?: string;
   lifecycle?: string;
   phone?: string;
+  hubspotOwnerId?: string;
 }
 
 export default function ProfileCard() {
@@ -292,13 +293,14 @@ export default function ProfileCard() {
         },
       };
 
-      await linkedinApi.saveContactAndCompany(finalPayload);
+      const response = await linkedinApi.saveContactAndCompany(finalPayload);
 
       setSyncedData({
         contactName: finalPayload.contact.name,
         companyName: finalPayload.company.name,
         email: finalPayload.contact.email,
         phone: finalPayload.contact.phone,
+        hubspotOwnerId: response.data.hubspotOwnerId,
       });
     } catch (err) {
       console.error("Error:", err);

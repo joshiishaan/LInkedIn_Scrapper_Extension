@@ -10,6 +10,7 @@ interface Props {
   lifecycle?: string;
   phone?: string;
   username: string;
+  hubspotOwnerId?: string;
 }
 
 export default function SyncedProfileView({
@@ -20,6 +21,7 @@ export default function SyncedProfileView({
   lifecycle,
   phone,
   username,
+  hubspotOwnerId,
 }: Props) {
   // Theme and colors
   const { theme } = useTheme();
@@ -105,9 +107,12 @@ export default function SyncedProfileView({
         setOwnerOptions(owners);
         setLifecycleOptions(lifecycles);
 
-        const defaultOwner = owners.find(
-          (o: any) => o.label === (ownerName || response.data.owner),
-        ) || { label: "Choose one", value: "" };
+        const defaultOwner = hubspotOwnerId
+          ? owners.find((o: any) => o.value === hubspotOwnerId)
+          : owners.find(
+              (o: any) => o.label === (ownerName || response.data.owner),
+            );
+
         const defaultLifecycle = lifecycles.find(
           (l: any) => l.label === (lifecycle || response.data.lifecycle),
         ) || { label: "Choose one", value: "" };
