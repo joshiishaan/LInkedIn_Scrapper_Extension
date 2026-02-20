@@ -150,16 +150,21 @@ export async function fetchLinkedInProfile(profileId: string) {
   return parseProfileData(data);
 }
 
-// Fetch LinkedIn profile contact info using internal API
+// Fetch LinkedIn profile contact info using GraphQL API
 export async function fetchLinkedInContactInfo(profileId: string) {
+  const csrf =
+    (document.cookie.match(/JSESSIONID="([^"]+)"/) ||
+      document.cookie.match(/JSESSIONID=([^;]+)/))?.[1] || "";
+
   const response = await fetch(
-    `https://www.linkedin.com/voyager/api/identity/profiles/${profileId}/profileContactInfo?decorationId=com.linkedin.voyager.dash.deco.identity.profile.ProfileContactInfo-8`,
+    `https://www.linkedin.com/voyager/api/graphql?includeWebMetadata=true&variables=(memberIdentity:${profileId})&queryId=voyagerIdentityDashProfiles.c7452e58fa37646d09dae4920fc5b4b9`,
     {
+      credentials: "include",
       headers: {
-        "csrf-token": getCsrfToken(),
+        accept: "application/vnd.linkedin.normalized+json+2.1",
+        "csrf-token": csrf,
         "x-restli-protocol-version": "2.0.0",
       },
-      credentials: "include",
     },
   );
 
@@ -168,14 +173,16 @@ export async function fetchLinkedInContactInfo(profileId: string) {
   }
 
   const data = await response.json();
+  const profile = data.included?.find(
+    (e: any) =>
+      e.$type === "com.linkedin.voyager.dash.identity.profile.Profile",
+  );
 
   return {
-    email: data.emailAddress || "",
-    phone: data.phoneNumbers?.[0]?.number || "",
-    websites: data.websites || [],
-    twitter: data.twitterHandles?.[0] || "",
-    birthDate: data.birthDateOn || null,
-    address: data.address || "",
+    email: profile?.emailAddress?.emailAddress || "",
+    phone: profile?.phoneNumbers?.[0]?.phoneNumber?.number || "",
+    websites: profile?.websites?.map((e: any) => e.url) || [],
+    birthDate: profile?.birthDateOn || null,
   };
 }
 

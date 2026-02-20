@@ -27,6 +27,7 @@ export default function SyncedProfileView({
   const colors = {
     bg: isDark ? "#1a202c" : "white",
     bgSecondary: isDark ? "#2d3748" : "#f3f4f6",
+    bgHover: isDark ? "#374151" : "#e5e7eb",
     border: isDark ? "#4a5568" : "#e5e7eb",
     text: isDark ? "#f7fafc" : "#000000e6",
     textSecondary: isDark ? "#a0aec0" : "#666",
@@ -221,16 +222,22 @@ export default function SyncedProfileView({
           <button
             onClick={() => setShowMenu(!showMenu)}
             style={{
-              background: "none",
-              border: "none",
+              background: colors.bgSecondary,
+              border: `1px solid ${colors.border}`,
               cursor: "pointer",
-              fontSize: "20px",
-              color: colors.textSecondary,
-              padding: "4px 8px",
-              borderRadius: "4px",
+              fontSize: "18px",
+              color: colors.text,
+              padding: "6px 10px",
+              borderRadius: "6px",
+              transition: "all 0.2s",
+              fontWeight: 600,
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.background = colors.bgHover)
+            }
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.background = colors.bgSecondary)
+            }
           >
             ⋯
           </button>
@@ -242,30 +249,36 @@ export default function SyncedProfileView({
                 right: 0,
                 background: colors.bg,
                 border: `1px solid ${colors.border}`,
-                borderRadius: "4px",
-                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                minWidth: "160px",
+                borderRadius: "6px",
+                boxShadow: isDark
+                  ? "0 4px 12px rgba(0,0,0,0.5)"
+                  : "0 4px 12px rgba(0,0,0,0.15)",
+                minWidth: "180px",
                 marginTop: "4px",
                 zIndex: 1000,
+                overflow: "hidden",
               }}
             >
               <div
                 onClick={handleUpdateCRM}
                 style={{
-                  padding: "10px 16px",
+                  padding: "12px 16px",
                   cursor: updating ? "not-allowed" : "pointer",
                   fontSize: "14px",
                   color: colors.text,
                   display: "flex",
                   alignItems: "center",
-                  gap: "8px",
+                  gap: "10px",
                   opacity: updating ? 0.5 : 1,
+                  transition: "background 0.15s",
+                  fontWeight: 500,
                 }}
                 onMouseEnter={(e) =>
-                  !updating && (e.currentTarget.style.background = "#f3f4f6")
+                  !updating &&
+                  (e.currentTarget.style.background = colors.bgSecondary)
                 }
                 onMouseLeave={(e) =>
-                  (e.currentTarget.style.background = "white")
+                  (e.currentTarget.style.background = "transparent")
                 }
               >
                 <svg
@@ -277,7 +290,7 @@ export default function SyncedProfileView({
                 >
                   <path
                     d="M13.5 8.5l-5 5L6 11M2.5 8.5l5-5 2.5 2.5"
-                    stroke="#666"
+                    stroke={colors.link}
                     strokeWidth="1.5"
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -326,7 +339,7 @@ export default function SyncedProfileView({
               >
                 <path
                   d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"
-                  fill="#666"
+                  fill={colors.textSecondary}
                 />
               </svg>
               <span style={{ fontSize: "13px", color: colors.textSecondary }}>
@@ -353,9 +366,11 @@ export default function SyncedProfileView({
                     left: 0,
                     background: colors.bg,
                     border: `1px solid ${colors.border}`,
-                    borderRadius: "4px",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                    width: "200px",
+                    borderRadius: "6px",
+                    boxShadow: isDark
+                      ? "0 4px 12px rgba(0,0,0,0.5)"
+                      : "0 4px 12px rgba(0,0,0,0.15)",
+                    width: "220px",
                     maxHeight: "200px",
                     overflow: "auto",
                     zIndex: 1000,
@@ -369,12 +384,14 @@ export default function SyncedProfileView({
                     onChange={(e) => setOwnerSearch(e.target.value)}
                     style={{
                       width: "100%",
-                      padding: "8px",
+                      padding: "10px",
                       border: "none",
-                      borderBottom: "1px solid #e5e7eb",
+                      borderBottom: `1px solid ${colors.border}`,
                       outline: "none",
                       fontSize: "14px",
                       boxSizing: "border-box",
+                      background: colors.bg,
+                      color: colors.text,
                     }}
                   />
                   {filteredOwners.map((option) => (
@@ -386,33 +403,38 @@ export default function SyncedProfileView({
                         setOwnerSearch("");
                       }}
                       style={{
-                        padding: "8px 12px",
+                        padding: "10px 12px",
                         cursor: "pointer",
                         fontSize: "14px",
                         color: colors.text,
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
+                        transition: "background 0.15s",
                       }}
                       onMouseEnter={(e) =>
-                        (e.currentTarget.style.background = "#f3f4f6")
+                        (e.currentTarget.style.background = colors.bgSecondary)
                       }
                       onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = "white")
+                        (e.currentTarget.style.background = "transparent")
                       }
                     >
                       <span
                         style={{
                           color:
                             option.value === selectedOwner.value
-                              ? "#0073b1"
-                              : "#000000e6",
+                              ? colors.link
+                              : colors.text,
+                          fontWeight:
+                            option.value === selectedOwner.value ? 500 : 400,
                         }}
                       >
                         {option.label}
                       </span>
                       {option.value === selectedOwner.value && (
-                        <span style={{ color: colors.link }}>✓</span>
+                        <span style={{ color: colors.link, fontSize: "16px" }}>
+                          ✓
+                        </span>
                       )}
                     </div>
                   ))}
@@ -441,7 +463,7 @@ export default function SyncedProfileView({
                   cx="8"
                   cy="8"
                   r="7"
-                  stroke="#666"
+                  stroke={colors.textSecondary}
                   strokeWidth="2"
                   fill="none"
                 />
@@ -471,9 +493,11 @@ export default function SyncedProfileView({
                     left: 0,
                     background: colors.bg,
                     border: `1px solid ${colors.border}`,
-                    borderRadius: "4px",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                    width: "200px",
+                    borderRadius: "6px",
+                    boxShadow: isDark
+                      ? "0 4px 12px rgba(0,0,0,0.5)"
+                      : "0 4px 12px rgba(0,0,0,0.15)",
+                    width: "220px",
                     maxHeight: "200px",
                     overflow: "auto",
                     zIndex: 1000,
@@ -487,12 +511,14 @@ export default function SyncedProfileView({
                     onChange={(e) => setLifecycleSearch(e.target.value)}
                     style={{
                       width: "100%",
-                      padding: "8px",
+                      padding: "10px",
                       border: "none",
-                      borderBottom: "1px solid #e5e7eb",
+                      borderBottom: `1px solid ${colors.border}`,
                       outline: "none",
                       fontSize: "14px",
                       boxSizing: "border-box",
+                      background: colors.bg,
+                      color: colors.text,
                     }}
                   />
                   {filteredLifecycles.map((option) => (
@@ -504,33 +530,40 @@ export default function SyncedProfileView({
                         setLifecycleSearch("");
                       }}
                       style={{
-                        padding: "8px 12px",
+                        padding: "10px 12px",
                         cursor: "pointer",
                         fontSize: "14px",
                         color: colors.text,
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
+                        transition: "background 0.15s",
                       }}
                       onMouseEnter={(e) =>
-                        (e.currentTarget.style.background = "#f3f4f6")
+                        (e.currentTarget.style.background = colors.bgSecondary)
                       }
                       onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = "white")
+                        (e.currentTarget.style.background = "transparent")
                       }
                     >
                       <span
                         style={{
                           color:
                             option.value === selectedLifecycle.value
-                              ? "#0073b1"
-                              : "#000000e6",
+                              ? colors.link
+                              : colors.text,
+                          fontWeight:
+                            option.value === selectedLifecycle.value
+                              ? 500
+                              : 400,
                         }}
                       >
                         {option.label}
                       </span>
                       {option.value === selectedLifecycle.value && (
-                        <span style={{ color: colors.link }}>✓</span>
+                        <span style={{ color: colors.link, fontSize: "16px" }}>
+                          ✓
+                        </span>
                       )}
                     </div>
                   ))}
@@ -557,9 +590,9 @@ export default function SyncedProfileView({
               >
                 <path
                   d="M2 4h12v8H2V4zm0-2a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H2z"
-                  fill="#666"
+                  fill={colors.textSecondary}
                 />
-                <path d="M4 6h4v4H4V6z" fill="#666" />
+                <path d="M4 6h4v4H4V6z" fill={colors.textSecondary} />
               </svg>
               <span style={{ fontSize: "13px", color: colors.textSecondary }}>
                 Company
@@ -588,7 +621,7 @@ export default function SyncedProfileView({
               >
                 <path
                   d="M2 3h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm0 2l6 4 6-4v-1l-6 4-6-4v1z"
-                  fill="#666"
+                  fill={colors.textSecondary}
                 />
               </svg>
               <span style={{ fontSize: "13px", color: colors.textSecondary }}>
@@ -610,29 +643,20 @@ export default function SyncedProfileView({
                 style={{
                   fontSize: "14px",
                   color: colors.text,
-
-                  // Reset ALL borders
                   border: "none",
                   borderTop: "none",
                   borderLeft: "none",
                   borderRight: "none",
-
-                  // Only control bottom border
                   borderBottom: isEmailFocused
-                    ? "2px solid #0073b1"
+                    ? `2px solid ${colors.link}`
                     : isEmailHovered
-                      ? "1px solid #999"
+                      ? `1px solid ${colors.textSecondary}`
                       : "1px solid transparent",
-
                   outline: "none",
-
-                  // Remove browser default styling
                   appearance: "none",
                   WebkitAppearance: "none",
                   MozAppearance: "none",
-
                   boxShadow: "none",
-
                   padding: "4px 0",
                   background: "transparent",
                   width: isEmailFocused ? "250px" : "auto",
@@ -661,7 +685,7 @@ export default function SyncedProfileView({
               >
                 <path
                   d="M3 2a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2zm2 10h6v1H5v-1z"
-                  fill="#666"
+                  fill={colors.textSecondary}
                 />
               </svg>
               <span style={{ fontSize: "13px", color: colors.textSecondary }}>
@@ -682,28 +706,21 @@ export default function SyncedProfileView({
                 onBlur={() => setIsMobileFocused(false)}
                 style={{
                   fontSize: "14px",
-                  color: editableMobile ? "#000000e6" : "#0073b1",
-
+                  color: editableMobile ? colors.text : colors.link,
                   border: "none",
                   borderTop: "none",
                   borderLeft: "none",
                   borderRight: "none",
-
                   borderBottom: isMobileFocused
-                    ? "2px solid #0073b1"
+                    ? `2px solid ${colors.link}`
                     : isMobileHovered
-                      ? "1px solid #999"
+                      ? `1px solid ${colors.textSecondary}`
                       : "1px solid transparent",
-
                   outline: "none",
-
-                  // Remove browser default appearance
                   appearance: "none",
                   WebkitAppearance: "none",
                   MozAppearance: "none",
-
                   boxShadow: "none",
-
                   padding: "4px 0",
                   background: "transparent",
                   width: isMobileFocused ? "250px" : "auto",
@@ -719,7 +736,7 @@ export default function SyncedProfileView({
           style={{
             marginTop: "16px",
             paddingTop: "16px",
-            borderTop: "1px solid #e5e7eb",
+            borderTop: `1px solid ${colors.border}`,
           }}
         >
           <div

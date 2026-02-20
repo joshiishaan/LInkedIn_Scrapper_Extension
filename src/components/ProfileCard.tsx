@@ -11,7 +11,7 @@ import {
   fetchLinkedInCompany,
   getProfileIdFromUrl,
   extractCompanyIdFromUrl,
-  // fetchLinkedInContactInfo,
+  fetchLinkedInContactInfo,
 } from "../utils/linkedinApi";
 import { linkedinApi, hubspotApi } from "../services/api";
 import CompanySelectionModal from "./CompanySelectionModal";
@@ -245,10 +245,10 @@ export default function ProfileCard() {
         throw new Error("Could not extract company ID");
       }
 
-      const companyData = await fetchLinkedInCompany(companyId);
-      // const contactInfo = await fetchLinkedInContactInfo(
-      //   profile.basicInfo.publicIdentifier,
-      // );
+      const [companyData, contactInfo] = await Promise.all([
+        fetchLinkedInCompany(companyId),
+        fetchLinkedInContactInfo(profile.basicInfo.publicIdentifier),
+      ]);
 
       // Build payload for backend
       const finalPayload = {
@@ -259,12 +259,10 @@ export default function ProfileCard() {
           headline: profile.basicInfo.headline || "",
           selectedRole: experience.title || "",
           selectedCompany: experience.company || "",
-          // email: contactInfo.email,
-          // phone: contactInfo.phone,
-          // website: contactInfo.websites?.[0] || "",
-          email: "",
-          phone: "",
-          website: "",
+          email: contactInfo.email,
+          phone: contactInfo.phone,
+          website: contactInfo.websites?.[0] || "",
+          birthDay: contactInfo.birthDate,
           locationCity: profile.basicInfo.location?.split(",")[0]?.trim() || "",
           locationState:
             profile.basicInfo.location?.split(",")[1]?.trim() || "",
