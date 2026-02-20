@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { hubspotApi } from "../services/api";
+import { useTheme } from "../context/ThemeContext";
 
 interface Props {
   contactName: string;
@@ -20,6 +21,19 @@ export default function SyncedProfileView({
   phone,
   username,
 }: Props) {
+  // Theme and colors
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const colors = {
+    bg: isDark ? "#1a202c" : "white",
+    bgSecondary: isDark ? "#2d3748" : "#f3f4f6",
+    border: isDark ? "#4a5568" : "#e5e7eb",
+    text: isDark ? "#f7fafc" : "#000000e6",
+    textSecondary: isDark ? "#a0aec0" : "#666",
+    link: isDark ? "#63b3ed" : "#0073b1",
+    input: isDark ? "#2d3748" : "transparent",
+  };
+
   const [editableEmail, setEditableEmail] = useState(email);
   const [editableMobile, setEditableMobile] = useState("");
   const [isEmailFocused, setIsEmailFocused] = useState(false);
@@ -192,7 +206,7 @@ export default function SyncedProfileView({
     <>
       <section
         style={{
-          background: "white",
+          background: colors.bg,
           borderRadius: "8px",
           padding: "20px 24px",
           border: "1px solid rgba(0,0,0,0.15)",
@@ -211,7 +225,7 @@ export default function SyncedProfileView({
               border: "none",
               cursor: "pointer",
               fontSize: "20px",
-              color: "#666",
+              color: colors.textSecondary,
               padding: "4px 8px",
               borderRadius: "4px",
             }}
@@ -226,8 +240,8 @@ export default function SyncedProfileView({
                 position: "absolute",
                 top: "100%",
                 right: 0,
-                background: "white",
-                border: "1px solid #e5e7eb",
+                background: colors.bg,
+                border: `1px solid ${colors.border}`,
                 borderRadius: "4px",
                 boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
                 minWidth: "160px",
@@ -241,7 +255,7 @@ export default function SyncedProfileView({
                   padding: "10px 16px",
                   cursor: updating ? "not-allowed" : "pointer",
                   fontSize: "14px",
-                  color: "#000000e6",
+                  color: colors.text,
                   display: "flex",
                   alignItems: "center",
                   gap: "8px",
@@ -280,13 +294,15 @@ export default function SyncedProfileView({
             style={{
               fontSize: "20px",
               fontWeight: 600,
-              color: "#000000e6",
+              color: colors.text,
               margin: "0 0 4px 0",
             }}
           >
             {contactName}
           </h2>
-          <p style={{ fontSize: "13px", color: "#666", margin: 0 }}>
+          <p
+            style={{ fontSize: "13px", color: colors.textSecondary, margin: 0 }}
+          >
             Last CRM activity just now
           </p>
         </div>
@@ -313,14 +329,16 @@ export default function SyncedProfileView({
                   fill="#666"
                 />
               </svg>
-              <span style={{ fontSize: "13px", color: "#666" }}>Owner</span>
+              <span style={{ fontSize: "13px", color: colors.textSecondary }}>
+                Owner
+              </span>
             </div>
             <div ref={ownerRef} style={{ position: "relative", flex: 1 }}>
               <div
                 onClick={() => setShowOwnerDropdown(!showOwnerDropdown)}
                 style={{
                   fontSize: "14px",
-                  color: "#0073b1",
+                  color: colors.link,
                   cursor: "pointer",
                   padding: "4px 0",
                 }}
@@ -333,8 +351,8 @@ export default function SyncedProfileView({
                     position: "absolute",
                     top: "100%",
                     left: 0,
-                    background: "white",
-                    border: "1px solid #e5e7eb",
+                    background: colors.bg,
+                    border: `1px solid ${colors.border}`,
                     borderRadius: "4px",
                     boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
                     width: "200px",
@@ -371,7 +389,7 @@ export default function SyncedProfileView({
                         padding: "8px 12px",
                         cursor: "pointer",
                         fontSize: "14px",
-                        color: "#000000e6",
+                        color: colors.text,
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
@@ -394,7 +412,7 @@ export default function SyncedProfileView({
                         {option.label}
                       </span>
                       {option.value === selectedOwner.value && (
-                        <span style={{ color: "#0073b1" }}>✓</span>
+                        <span style={{ color: colors.link }}>✓</span>
                       )}
                     </div>
                   ))}
@@ -428,14 +446,16 @@ export default function SyncedProfileView({
                   fill="none"
                 />
               </svg>
-              <span style={{ fontSize: "13px", color: "#666" }}>Lifecycle</span>
+              <span style={{ fontSize: "13px", color: colors.textSecondary }}>
+                Lifecycle
+              </span>
             </div>
             <div ref={lifecycleRef} style={{ position: "relative", flex: 1 }}>
               <div
                 onClick={() => setShowLifecycleDropdown(!showLifecycleDropdown)}
                 style={{
                   fontSize: "14px",
-                  color: "#0073b1",
+                  color: colors.link,
                   cursor: "pointer",
                   padding: "4px 0",
                   fontWeight: 500,
@@ -449,8 +469,8 @@ export default function SyncedProfileView({
                     position: "absolute",
                     top: "100%",
                     left: 0,
-                    background: "white",
-                    border: "1px solid #e5e7eb",
+                    background: colors.bg,
+                    border: `1px solid ${colors.border}`,
                     borderRadius: "4px",
                     boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
                     width: "200px",
@@ -487,7 +507,7 @@ export default function SyncedProfileView({
                         padding: "8px 12px",
                         cursor: "pointer",
                         fontSize: "14px",
-                        color: "#000000e6",
+                        color: colors.text,
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
@@ -510,7 +530,7 @@ export default function SyncedProfileView({
                         {option.label}
                       </span>
                       {option.value === selectedLifecycle.value && (
-                        <span style={{ color: "#0073b1" }}>✓</span>
+                        <span style={{ color: colors.link }}>✓</span>
                       )}
                     </div>
                   ))}
@@ -541,9 +561,11 @@ export default function SyncedProfileView({
                 />
                 <path d="M4 6h4v4H4V6z" fill="#666" />
               </svg>
-              <span style={{ fontSize: "13px", color: "#666" }}>Company</span>
+              <span style={{ fontSize: "13px", color: colors.textSecondary }}>
+                Company
+              </span>
             </div>
-            <span style={{ fontSize: "14px", color: "#000000e6" }}>
+            <span style={{ fontSize: "14px", color: colors.text }}>
               {companyName}
             </span>
           </div>
@@ -569,7 +591,9 @@ export default function SyncedProfileView({
                   fill="#666"
                 />
               </svg>
-              <span style={{ fontSize: "13px", color: "#666" }}>Email</span>
+              <span style={{ fontSize: "13px", color: colors.textSecondary }}>
+                Email
+              </span>
             </div>
             <div
               style={{ position: "relative", display: "inline-block" }}
@@ -585,7 +609,7 @@ export default function SyncedProfileView({
                 onBlur={() => setIsEmailFocused(false)}
                 style={{
                   fontSize: "14px",
-                  color: "#000000e6",
+                  color: colors.text,
 
                   // Reset ALL borders
                   border: "none",
@@ -640,7 +664,9 @@ export default function SyncedProfileView({
                   fill="#666"
                 />
               </svg>
-              <span style={{ fontSize: "13px", color: "#666" }}>Mobile</span>
+              <span style={{ fontSize: "13px", color: colors.textSecondary }}>
+                Mobile
+              </span>
             </div>
             <div
               style={{ position: "relative", display: "inline-block" }}
@@ -704,11 +730,13 @@ export default function SyncedProfileView({
             }}
           >
             <span
-              style={{ fontSize: "14px", fontWeight: 600, color: "#000000e6" }}
+              style={{ fontSize: "14px", fontWeight: 600, color: colors.text }}
             >
               Notes
             </span>
-            <span style={{ fontSize: "13px", color: "#666" }}>2</span>
+            <span style={{ fontSize: "13px", color: colors.textSecondary }}>
+              2
+            </span>
           </div>
 
           <div
@@ -719,11 +747,13 @@ export default function SyncedProfileView({
             }}
           >
             <span
-              style={{ fontSize: "14px", fontWeight: 600, color: "#000000e6" }}
+              style={{ fontSize: "14px", fontWeight: 600, color: colors.text }}
             >
               Tasks
             </span>
-            <span style={{ fontSize: "13px", color: "#666" }}>3</span>
+            <span style={{ fontSize: "13px", color: colors.textSecondary }}>
+              3
+            </span>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -735,7 +765,7 @@ export default function SyncedProfileView({
                 background: "#10b981",
               }}
             />
-            <span style={{ fontSize: "13px", color: "#666" }}>
+            <span style={{ fontSize: "13px", color: colors.textSecondary }}>
               No tasks due
             </span>
           </div>

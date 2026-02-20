@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { useTheme } from "../context/ThemeContext";
 import {
   fetchLinkedInProfile,
   fetchLinkedInCompany,
@@ -42,6 +43,16 @@ interface SyncedData {
 }
 
 export default function ProfileCard() {
+  // Theme detection and styles
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const colors = {
+    bg: isDark ? "#1a202c" : "white",
+    border: isDark ? "#4a5568" : "rgba(0,0,0,0.15)",
+    text: isDark ? "#f7fafc" : "#000000e6",
+    textSecondary: isDark ? "#a0aec0" : "#666",
+  };
+
   // Loading states
   const [loading, setLoading] = useState(false);
   const [fetchingCompany, setFetchingCompany] = useState(false);
@@ -310,14 +321,16 @@ export default function ProfileCard() {
     return (
       <section
         style={{
-          background: "white",
+          background: colors.bg,
           borderRadius: "8px",
           padding: "20px 24px",
-          border: "1px solid rgba(0,0,0,0.15)",
+          border: `1px solid ${colors.border}`,
           marginTop: "8px",
         }}
       >
-        <p style={{ margin: 0, color: "#666", fontSize: "14px" }}>Loading...</p>
+        <p style={{ margin: 0, color: colors.textSecondary, fontSize: "14px" }}>
+          Loading...
+        </p>
       </section>
     );
   }
@@ -327,10 +340,10 @@ export default function ProfileCard() {
     return (
       <section
         style={{
-          background: "white",
+          background: colors.bg,
           borderRadius: "8px",
           padding: "20px 24px",
-          border: "1px solid rgba(0,0,0,0.15)",
+          border: `1px solid ${colors.border}`,
           marginTop: "8px",
         }}
       >
@@ -346,7 +359,7 @@ export default function ProfileCard() {
             style={{
               fontSize: "16px",
               fontWeight: 600,
-              color: "#000000e6",
+              color: colors.text,
               margin: 0,
               lineHeight: "1.5",
             }}
@@ -378,10 +391,10 @@ export default function ProfileCard() {
     return (
       <section
         style={{
-          background: "white",
+          background: colors.bg,
           borderRadius: "8px",
           padding: "20px 24px",
-          border: "1px solid rgba(0,0,0,0.15)",
+          border: `1px solid ${colors.border}`,
           marginTop: "8px",
         }}
       >
@@ -397,7 +410,7 @@ export default function ProfileCard() {
             style={{
               fontSize: "16px",
               fontWeight: 600,
-              color: "#000000e6",
+              color: colors.text,
               margin: 0,
               lineHeight: "1.5",
             }}
@@ -434,10 +447,10 @@ export default function ProfileCard() {
     <>
       <section
         style={{
-          background: "white",
+          background: colors.bg,
           borderRadius: "8px",
           padding: "20px 24px",
-          border: "1px solid rgba(0,0,0,0.15)",
+          border: `1px solid ${colors.border}`,
           marginTop: "8px",
         }}
       >
@@ -453,7 +466,7 @@ export default function ProfileCard() {
             style={{
               fontSize: "16px",
               fontWeight: 600,
-              color: "#000000e6",
+              color: colors.text,
               margin: 0,
               lineHeight: "1.5",
             }}

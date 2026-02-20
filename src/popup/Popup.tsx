@@ -1,9 +1,10 @@
 /**
  * Popup Root Component
- * Manages authentication flow and dashboard views
+ * Manages authentication flow and dashboard views with theme support
  */
 
 import { useState, useEffect } from "react";
+import { ThemeProvider } from "../context/ThemeContext";
 import Login from "./components/Login";
 import Signup from "./components/Signup";
 import ResetPassword from "./components/ResetPassword";
@@ -11,7 +12,7 @@ import Dashboard from "./components/Dashboard";
 
 type View = "login" | "signup" | "reset" | "dashboard";
 
-export default function Popup() {
+function PopupContent() {
   const [view, setView] = useState<View>("login");
   const [user, setUser] = useState<any>(null);
 
@@ -56,5 +57,13 @@ export default function Popup() {
         <Dashboard user={user} onLogout={handleLogout} />
       )}
     </div>
+  );
+}
+
+export default function Popup() {
+  return (
+    <ThemeProvider>
+      <PopupContent />
+    </ThemeProvider>
   );
 }

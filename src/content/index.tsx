@@ -6,6 +6,7 @@
 
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { ThemeProvider } from "../context/ThemeContext";
 import ProfileCard from "../components/ProfileCard";
 
 (function () {
@@ -16,7 +17,9 @@ import ProfileCard from "../components/ProfileCard";
   function renderCard(container: HTMLElement) {
     ReactDOM.createRoot(container).render(
       <React.StrictMode>
-        <ProfileCard />
+        <ThemeProvider>
+          <ProfileCard />
+        </ThemeProvider>
       </React.StrictMode>,
     );
   }

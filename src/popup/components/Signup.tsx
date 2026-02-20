@@ -1,6 +1,6 @@
 /**
  * Signup Component
- * Handles user registration
+ * Handles new user registration with theme support
  */
 
 import { useState } from "react";
@@ -12,13 +12,12 @@ interface Props {
 }
 
 export default function Signup({ onAuth, onLogin }: Props) {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Handle signup form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -28,7 +27,7 @@ export default function Signup({ onAuth, onLogin }: Props) {
       const response = await authApi.signup(name, email, password);
       onAuth(response.data.user);
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Signup failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -58,10 +57,11 @@ export default function Signup({ onAuth, onLogin }: Props) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
+          minLength={6}
         />
         {error && <div className="error">{error}</div>}
         <button type="submit" disabled={loading}>
-          {loading ? "Creating..." : "Sign Up"}
+          {loading ? "Creating Account..." : "Sign Up"}
         </button>
       </form>
       <div className="auth-links">

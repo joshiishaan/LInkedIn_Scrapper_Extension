@@ -1,6 +1,6 @@
 /**
  * Login Component
- * Handles user authentication
+ * Handles user authentication with theme support
  */
 
 import { useState } from "react";
@@ -28,7 +28,7 @@ export default function Login({ onAuth, onSignup, onReset }: Props) {
       const response = await authApi.login(email, password);
       onAuth(response.data.user);
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Login failed. Please try again.");
     } finally {
       setLoading(false);
     }

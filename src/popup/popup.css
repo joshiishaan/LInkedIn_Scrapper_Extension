@@ -1,3 +1,41 @@
+:root[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f7fa;
+  --bg-gradient-start: #667eea;
+  --bg-gradient-end: #764ba2;
+  --text-primary: #1a202c;
+  --text-secondary: #718096;
+  --text-inverse: #ffffff;
+  --border-color: #e2e8f0;
+  --input-bg: #ffffff;
+  --success-bg: #d1fae5;
+  --success-text: #065f46;
+  --warning-bg: #fef3c7;
+  --warning-text: #92400e;
+  --error-bg: #fee2e2;
+  --error-text: #991b1b;
+  --shadow: rgba(0, 0, 0, 0.1);
+}
+
+:root[data-theme="dark"] {
+  --bg-primary: #1a202c;
+  --bg-secondary: #2d3748;
+  --bg-gradient-start: #4c51bf;
+  --bg-gradient-end: #553c9a;
+  --text-primary: #f7fafc;
+  --text-secondary: #a0aec0;
+  --text-inverse: #1a202c;
+  --border-color: #4a5568;
+  --input-bg: #2d3748;
+  --success-bg: #065f46;
+  --success-text: #d1fae5;
+  --warning-bg: #92400e;
+  --warning-text: #fef3c7;
+  --error-bg: #991b1b;
+  --error-text: #fee2e2;
+  --shadow: rgba(0, 0, 0, 0.3);
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -8,62 +46,78 @@ body {
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
     sans-serif;
-  background: #f5f7fa;
+  background: var(--bg-secondary);
+  transition: background-color 0.3s ease;
 }
 
 .popup-container {
   width: 360px;
   min-height: 400px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(
+    135deg,
+    var(--bg-gradient-start) 0%,
+    var(--bg-gradient-end) 100%
+  );
 }
 
 .auth-form {
   padding: 32px 24px;
-  background: white;
+  background: var(--bg-primary);
   min-height: 400px;
   display: flex;
   flex-direction: column;
   justify-content: center;
+  transition: background-color 0.3s ease;
 }
 
 .auth-form h2 {
-  color: #1a202c;
+  color: var(--text-primary);
   font-size: 24px;
   margin-bottom: 24px;
   text-align: center;
+  transition: color 0.3s ease;
 }
 
 .auth-form input {
   width: 100%;
   padding: 12px 16px;
   margin-bottom: 12px;
-  border: 2px solid #e2e8f0;
+  border: 2px solid var(--border-color);
   border-radius: 8px;
   font-size: 14px;
-  transition: border-color 0.2s;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  transition: all 0.3s ease;
 }
 
 .auth-form input:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: var(--bg-gradient-start);
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
 .auth-form button[type="submit"] {
   width: 100%;
   padding: 12px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(
+    135deg,
+    var(--bg-gradient-start) 0%,
+    var(--bg-gradient-end) 100%
+  );
+  color: var(--text-inverse);
   border: none;
   border-radius: 8px;
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.2s;
+  transition: all 0.3s ease;
   margin-top: 8px;
+  box-shadow: 0 4px 6px var(--shadow);
 }
 
 .auth-form button[type="submit"]:hover:not(:disabled) {
   transform: translateY(-2px);
+  box-shadow: 0 6px 12px var(--shadow);
 }
 
 .auth-form button[type="submit"]:disabled {
@@ -82,19 +136,25 @@ body {
 .link-btn {
   background: none;
   border: none;
-  color: #667eea;
+  color: var(--bg-gradient-start);
   font-size: 14px;
   cursor: pointer;
   text-decoration: underline;
+  transition: opacity 0.2s ease;
+}
+
+.link-btn:hover {
+  opacity: 0.8;
 }
 
 .error {
-  background: #fee;
-  color: #c33;
+  background: var(--error-bg);
+  color: var(--error-text);
   padding: 10px;
   border-radius: 6px;
   font-size: 13px;
   margin-bottom: 12px;
+  transition: all 0.3s ease;
 }
 
 .success-message {
@@ -102,47 +162,74 @@ body {
 }
 
 .success-message p {
-  color: #059669;
+  color: var(--success-text);
   font-size: 16px;
   margin-bottom: 20px;
 }
 
 .success-message button {
   padding: 10px 24px;
-  background: #667eea;
-  color: white;
+  background: var(--bg-gradient-start);
+  color: var(--text-inverse);
   border: none;
   border-radius: 6px;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.success-message button:hover {
+  transform: translateY(-2px);
 }
 
 .dashboard {
-  background: white;
+  background: var(--bg-primary);
   min-height: 400px;
+  transition: background-color 0.3s ease;
 }
 
 .dashboard-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(
+    135deg,
+    var(--bg-gradient-start) 0%,
+    var(--bg-gradient-end) 100%
+  );
   padding: 20px 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  box-shadow: 0 2px 8px var(--shadow);
 }
 
 .dashboard-header h2 {
-  color: white;
+  color: var(--text-inverse);
   font-size: 18px;
+}
+
+.theme-toggle {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: var(--text-inverse);
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 18px;
+  transition: all 0.2s ease;
+  margin-right: 8px;
+}
+
+.theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .logout-btn {
   background: rgba(255, 255, 255, 0.2);
-  color: white;
+  color: var(--text-inverse);
   border: 1px solid rgba(255, 255, 255, 0.3);
   padding: 6px 16px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
-  transition: background 0.2s;
+  transition: all 0.2s ease;
 }
 
 .logout-btn:hover {
@@ -154,31 +241,39 @@ body {
   display: flex;
   align-items: center;
   gap: 16px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--border-color);
+  transition: border-color 0.3s ease;
 }
 
 .avatar {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(
+    135deg,
+    var(--bg-gradient-start) 0%,
+    var(--bg-gradient-end) 100%
+  );
+  color: var(--text-inverse);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 20px;
   font-weight: 600;
+  box-shadow: 0 2px 8px var(--shadow);
 }
 
 .user-info h3 {
   font-size: 16px;
-  color: #1a202c;
+  color: var(--text-primary);
   margin-bottom: 4px;
+  transition: color 0.3s ease;
 }
 
 .user-info p {
   font-size: 13px;
-  color: #718096;
+  color: var(--text-secondary);
+  transition: color 0.3s ease;
 }
 
 .integration-section {
@@ -187,13 +282,15 @@ body {
 
 .integration-section h3 {
   font-size: 15px;
-  color: #1a202c;
+  color: var(--text-primary);
   margin-bottom: 16px;
+  transition: color 0.3s ease;
 }
 
 .status-loading {
-  color: #718096;
+  color: var(--text-secondary);
   font-size: 14px;
+  transition: color 0.3s ease;
 }
 
 .status-connected {
@@ -201,10 +298,12 @@ body {
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  background: #d1fae5;
+  background: var(--success-bg);
   border-radius: 8px;
-  color: #065f46;
+  color: var(--success-text);
   font-size: 14px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px var(--shadow);
 }
 
 .status-disconnected {
@@ -212,10 +311,12 @@ body {
   flex-direction: column;
   gap: 12px;
   padding: 12px 16px;
-  background: #fef3c7;
+  background: var(--warning-bg);
   border-radius: 8px;
-  color: #92400e;
+  color: var(--warning-text);
   font-size: 14px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px var(--shadow);
 }
 
 .status-icon {
@@ -224,18 +325,24 @@ body {
 
 .connect-btn {
   padding: 10px 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(
+    135deg,
+    var(--bg-gradient-start) 0%,
+    var(--bg-gradient-end) 100%
+  );
+  color: var(--text-inverse);
   border: none;
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
   font-weight: 600;
-  transition: transform 0.2s;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px var(--shadow);
 }
 
 .connect-btn:hover:not(:disabled) {
   transform: translateY(-2px);
+  box-shadow: 0 4px 8px var(--shadow);
 }
 
 .connect-btn:disabled {

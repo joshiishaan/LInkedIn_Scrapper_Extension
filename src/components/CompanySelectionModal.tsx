@@ -1,9 +1,5 @@
-/**
- * CompanySelectionModal Component
- * Modal dialog for selecting current company when user has multiple active positions
- */
-
 import { useState } from "react";
+import { useTheme } from "../context/ThemeContext";
 
 interface Experience {
   title: string;
@@ -26,11 +22,24 @@ export default function CompanySelectionModal({
   onSelect,
   onClose,
 }: Props) {
+  const { theme } = useTheme();
   const [selectedCompany, setSelectedCompany] = useState<Experience | null>(
     null,
   );
 
-  // Format date object to readable string
+  const isDark = theme === "dark";
+
+  const colors = {
+    overlay: isDark ? "rgba(0, 0, 0, 0.8)" : "rgba(0, 0, 0, 0.6)",
+    bg: isDark ? "#1a202c" : "white",
+    border: isDark ? "#4a5568" : "#e5e7eb",
+    text: isDark ? "#f7fafc" : "#000000e6",
+    textSecondary: isDark ? "#a0aec0" : "#666",
+    hover: isDark ? "#2d3748" : "#f3f4f6",
+    selected: isDark ? "#2d3748" : "#f0f4ff",
+    selectedBorder: isDark ? "#4c51bf" : "#667eea",
+  };
+
   const formatDate = (date: any) => {
     if (!date) return "";
     const { month, year } = date;
@@ -66,7 +75,7 @@ export default function CompanySelectionModal({
         left: 0,
         right: 0,
         bottom: 0,
-        background: "rgba(0, 0, 0, 0.6)",
+        background: colors.overlay,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -77,7 +86,7 @@ export default function CompanySelectionModal({
     >
       <div
         style={{
-          background: "white",
+          background: colors.bg,
           borderRadius: "12px",
           maxWidth: "600px",
           width: "100%",
@@ -85,13 +94,14 @@ export default function CompanySelectionModal({
           display: "flex",
           flexDirection: "column",
           boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
+          transition: "background 0.3s",
         }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
           style={{
             padding: "20px 24px",
-            borderBottom: "1px solid #e5e7eb",
+            borderBottom: `1px solid ${colors.border}`,
           }}
         >
           <div
@@ -105,7 +115,7 @@ export default function CompanySelectionModal({
               style={{
                 fontSize: "20px",
                 fontWeight: 600,
-                color: "#000000e6",
+                color: colors.text,
                 margin: 0,
               }}
             >
@@ -118,7 +128,7 @@ export default function CompanySelectionModal({
                 border: "none",
                 fontSize: "24px",
                 cursor: "pointer",
-                color: "#666",
+                color: colors.textSecondary,
                 padding: "0",
                 width: "32px",
                 height: "32px",
@@ -129,14 +139,20 @@ export default function CompanySelectionModal({
                 transition: "background 0.2s",
               }}
               onMouseEnter={(e) =>
-                (e.currentTarget.style.background = "#f3f4f6")
+                (e.currentTarget.style.background = colors.hover)
               }
               onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
             >
               ×
             </button>
           </div>
-          <p style={{ fontSize: "14px", color: "#666", margin: "8px 0 0 0" }}>
+          <p
+            style={{
+              fontSize: "14px",
+              color: colors.textSecondary,
+              margin: "8px 0 0 0",
+            }}
+          >
             Multiple current positions found. Select one to fetch company
             details.
           </p>
@@ -151,24 +167,25 @@ export default function CompanySelectionModal({
                 padding: "16px",
                 border:
                   selectedCompany === exp
-                    ? "2px solid #667eea"
-                    : "1px solid #e5e7eb",
+                    ? `2px solid ${colors.selectedBorder}`
+                    : `1px solid ${colors.border}`,
                 borderRadius: "8px",
                 marginBottom: "12px",
                 cursor: "pointer",
                 transition: "all 0.2s",
-                background: selectedCompany === exp ? "#f0f4ff" : "white",
+                background:
+                  selectedCompany === exp ? colors.selected : colors.bg,
               }}
               onMouseEnter={(e) => {
                 if (selectedCompany !== exp) {
-                  e.currentTarget.style.borderColor = "#667eea";
+                  e.currentTarget.style.borderColor = colors.selectedBorder;
                   e.currentTarget.style.boxShadow =
                     "0 4px 12px rgba(102, 126, 234, 0.15)";
                 }
               }}
               onMouseLeave={(e) => {
                 if (selectedCompany !== exp) {
-                  e.currentTarget.style.borderColor = "#e5e7eb";
+                  e.currentTarget.style.borderColor = colors.border;
                   e.currentTarget.style.boxShadow = "none";
                 }
               }}
@@ -186,7 +203,7 @@ export default function CompanySelectionModal({
                     style={{
                       fontSize: "16px",
                       fontWeight: 600,
-                      color: "#000000e6",
+                      color: colors.text,
                       margin: "0 0 4px 0",
                     }}
                   >
@@ -195,7 +212,7 @@ export default function CompanySelectionModal({
                   <p
                     style={{
                       fontSize: "14px",
-                      color: "#000000e6",
+                      color: colors.text,
                       margin: "0 0 4px 0",
                       fontWeight: 500,
                     }}
@@ -205,7 +222,7 @@ export default function CompanySelectionModal({
                   <div
                     style={{
                       fontSize: "13px",
-                      color: "#666",
+                      color: colors.textSecondary,
                       display: "flex",
                       flexWrap: "wrap",
                       gap: "4px 8px",
@@ -222,7 +239,7 @@ export default function CompanySelectionModal({
                   <p
                     style={{
                       fontSize: "13px",
-                      color: "#666",
+                      color: colors.textSecondary,
                       margin: "4px 0 0 0",
                     }}
                   >
@@ -235,7 +252,7 @@ export default function CompanySelectionModal({
                       width: "24px",
                       height: "24px",
                       borderRadius: "50%",
-                      background: "#667eea",
+                      background: colors.selectedBorder,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -260,7 +277,7 @@ export default function CompanySelectionModal({
         <div
           style={{
             padding: "16px 24px",
-            borderTop: "1px solid #e5e7eb",
+            borderTop: `1px solid ${colors.border}`,
             display: "flex",
             justifyContent: "flex-end",
             gap: "12px",
@@ -270,9 +287,9 @@ export default function CompanySelectionModal({
             onClick={onClose}
             style={{
               padding: "10px 20px",
-              background: "white",
-              color: "#666",
-              border: "1px solid #e5e7eb",
+              background: colors.bg,
+              color: colors.textSecondary,
+              border: `1px solid ${colors.border}`,
               borderRadius: "16px",
               cursor: "pointer",
               fontSize: "14px",
@@ -280,10 +297,10 @@ export default function CompanySelectionModal({
               transition: "all 0.2s",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#f3f4f6";
+              e.currentTarget.style.background = colors.hover;
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = "white";
+              e.currentTarget.style.background = colors.bg;
             }}
           >
             Cancel

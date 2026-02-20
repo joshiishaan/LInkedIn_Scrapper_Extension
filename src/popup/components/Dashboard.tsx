@@ -1,10 +1,11 @@
 /**
  * Dashboard Component
- * Shows user info and HubSpot connection status
+ * Shows user info and HubSpot connection status with theme toggle
  */
 
 import { useState, useEffect } from "react";
 import { hubspotApi } from "../../services/api";
+import { useTheme } from "../../context/ThemeContext";
 
 interface Props {
   user: any;
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export default function Dashboard({ user, onLogout }: Props) {
+  const { theme, toggleTheme } = useTheme();
   const [hubspotConnected, setHubspotConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
@@ -61,9 +63,18 @@ export default function Dashboard({ user, onLogout }: Props) {
     <div className="dashboard">
       <div className="dashboard-header">
         <h2>LinkedIn Scraper</h2>
-        <button onClick={onLogout} className="logout-btn">
-          Logout
-        </button>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button
+            onClick={toggleTheme}
+            className="theme-toggle"
+            title="Toggle theme"
+          >
+            {theme === "light" ? "🌙" : "☀️"}
+          </button>
+          <button onClick={onLogout} className="logout-btn">
+            Logout
+          </button>
+        </div>
       </div>
 
       <div className="user-info">
