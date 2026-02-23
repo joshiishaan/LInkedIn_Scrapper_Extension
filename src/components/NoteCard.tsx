@@ -26,6 +26,7 @@ export default function NoteCard({
     deleteHover: isDark ? "#742a2a" : "#fee2e2",
   };
 
+  // Calculate relative time (e.g., "5m ago", "2h ago", "3d ago")
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
     const now = new Date();
@@ -41,6 +42,7 @@ export default function NoteCard({
     return date.toLocaleDateString();
   };
 
+  // Truncate long text with ellipsis for preview
   const truncateContent = (text: string, maxLength: number = 80) => {
     if (text.length <= maxLength) return text;
     return text.substring(0, maxLength) + "...";

@@ -57,6 +57,7 @@ export default function NotesPanel({
   const [nextStep, setNextStep] = useState("");
   const [content, setContent] = useState("");
 
+  // Load notes from backend when panel opens
   useEffect(() => {
     if (isOpen && hubspotContactId) {
       loadNotes();
@@ -79,6 +80,7 @@ export default function NotesPanel({
     }
   };
 
+  // Create isolated portal container to prevent style conflicts
   useEffect(() => {
     if (!isOpen) return;
 
@@ -100,6 +102,7 @@ export default function NotesPanel({
     };
   }, [isOpen]);
 
+  // Reset expanded panel state when main panel closes
   useEffect(() => {
     if (!isOpen && showExpandedPanel) {
       setShowExpandedPanel(false);
@@ -118,6 +121,7 @@ export default function NotesPanel({
     setTimeout(() => setIsClosing(false), 10);
   };
 
+  // Toggle or open note editor panel
   const handleEditNote = (note: Note) => {
     // If clicking the same note that's already open, close the panel
     if (editingNote?.id === note.id && showExpandedPanel) {
@@ -145,6 +149,7 @@ export default function NotesPanel({
     }
   };
 
+  // Animate panel close with delay
   const handleCloseExpandedPanel = () => {
     setIsClosing(true);
     setTimeout(() => {
@@ -153,6 +158,7 @@ export default function NotesPanel({
     }, 300);
   };
 
+  // Check if note has unsaved changes
   const hasChanges = () => {
     if (!editingNote) return true;
     return (

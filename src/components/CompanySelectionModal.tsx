@@ -40,6 +40,7 @@ export default function CompanySelectionModal({
     selectedBorder: isDark ? "#4c51bf" : "#667eea",
   };
 
+  // Convert LinkedIn date object to readable format (e.g., "Jan 2023")
   const formatDate = (date: any) => {
     if (!date) return "";
     const { month, year } = date;
@@ -60,6 +61,7 @@ export default function CompanySelectionModal({
     return `${months[month - 1] || ""} ${year || ""}`.trim();
   };
 
+  // Trigger parent callback with selected company and close modal
   const handleConfirm = () => {
     if (selectedCompany) {
       onSelect(selectedCompany);

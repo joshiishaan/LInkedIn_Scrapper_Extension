@@ -82,6 +82,7 @@ export default function SyncedProfileView({
   const lifecycleRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  // Load notes count from backend on mount
   useEffect(() => {
     const loadNotesCount = async () => {
       try {
@@ -127,6 +128,7 @@ export default function SyncedProfileView({
     };
   }, []);
 
+  // Fetch property options (owners, lifecycle stages) from HubSpot
   useEffect(() => {
     const fetchPropertyOptions = async () => {
       try {
@@ -170,6 +172,7 @@ export default function SyncedProfileView({
     fetchPropertyOptions();
   }, [email, ownerName, lifecycle, phone]);
 
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -195,6 +198,7 @@ export default function SyncedProfileView({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Load notes count from backend
   useEffect(() => {
     const loadNotesCount = async () => {
       if (!hubspotContactId) return;
@@ -214,6 +218,7 @@ export default function SyncedProfileView({
     loadNotesCount();
   }, [hubspotContactId]);
 
+  // Update CRM with modified contact fields
   const handleUpdateCRM = async () => {
     setUpdating(true);
     try {
@@ -249,6 +254,7 @@ export default function SyncedProfileView({
     }
   };
 
+  // Filter dropdown options based on search input
   const filteredOwners = ownerOptions.filter((option) =>
     option.label.toLowerCase().includes(ownerSearch.toLowerCase()),
   );
