@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { hubspotApi } from "../services/api";
 import { useTheme } from "../context/ThemeContext";
+import { notesApi } from "../services/api";
+import NotesPanel from "./NotesPanel";
 
 interface Props {
   contactName: string;
@@ -11,6 +13,7 @@ interface Props {
   phone?: string;
   username: string;
   hubspotOwnerId?: string;
+  hubspotContactId?: string;
 }
 
 export default function SyncedProfileView({
@@ -22,21 +25,23 @@ export default function SyncedProfileView({
   phone,
   username,
   hubspotOwnerId,
+  hubspotContactId,
 }: Props) {
-  // Theme and colors
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const colors = {
     bg: isDark ? "#1a202c" : "white",
-    bgSecondary: isDark ? "#2d3748" : "#f3f4f6",
+    bgSecondary: isDark ? "#2d3748" : "#f7f8fa",
     bgHover: isDark ? "#374151" : "#e5e7eb",
     border: isDark ? "#4a5568" : "#e5e7eb",
     text: isDark ? "#f7fafc" : "#000000e6",
     textSecondary: isDark ? "#a0aec0" : "#666",
     link: isDark ? "#63b3ed" : "#0073b1",
-    input: isDark ? "#2d3748" : "transparent",
   };
 
+  const [showNotesPanel, setShowNotesPanel] = useState(false);
+  const [notesCountLoading, setNotesCountLoading] = useState(true);
+  const [notesCount, setNotesCount] = useState(0);
   const [editableEmail, setEditableEmail] = useState(email);
   const [editableMobile, setEditableMobile] = useState("");
   const [isEmailFocused, setIsEmailFocused] = useState(false);
@@ -76,6 +81,31 @@ export default function SyncedProfileView({
   const ownerRef = useRef<HTMLDivElement>(null);
   const lifecycleRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const loadNotesCount = async () => {
+      try {
+        const result = await chrome.storage.local.get([`notes_${username}`]);
+        const notes = (result[`notes_${username}`] as any[]) || [];
+        setNotesCount(notes.length);
+      } catch (err) {
+        console.error("Failed to load notes count:", err);
+      }
+    };
+
+    loadNotesCount();
+
+    // Listen for storage changes to update count
+    const handleStorageChange = (changes: any) => {
+      if (changes[`notes_${username}`]) {
+        const notes = (changes[`notes_${username}`].newValue as any[]) || [];
+        setNotesCount(notes.length);
+      }
+    };
+
+    chrome.storage.onChanged.addListener(handleStorageChange);
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange);
+  }, [username]);
 
   useEffect(() => {
     const style = document.createElement("style");
@@ -165,6 +195,25 @@ export default function SyncedProfileView({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    const loadNotesCount = async () => {
+      if (!hubspotContactId) return;
+
+      setNotesCountLoading(true);
+      try {
+        const response = await notesApi.getNotes(hubspotContactId);
+        const notes = response.data || [];
+        setNotesCount(notes.length);
+      } catch (err) {
+        console.error("Failed to load notes count:", err);
+      } finally {
+        setNotesCountLoading(false);
+      }
+    };
+
+    loadNotesCount();
+  }, [hubspotContactId]);
+
   const handleUpdateCRM = async () => {
     setUpdating(true);
     try {
@@ -214,7 +263,7 @@ export default function SyncedProfileView({
         style={{
           background: colors.bg,
           borderRadius: "8px",
-          padding: "20px 24px",
+          padding: "20px 24px 100px 24px",
           border: "1px solid rgba(0,0,0,0.15)",
           marginTop: "8px",
           position: "relative",
@@ -227,22 +276,24 @@ export default function SyncedProfileView({
           <button
             onClick={() => setShowMenu(!showMenu)}
             style={{
-              background: colors.bgSecondary,
-              border: `1px solid ${colors.border}`,
+              background: "transparent",
+              border: "none",
               cursor: "pointer",
-              fontSize: "18px",
-              color: colors.text,
-              padding: "6px 10px",
-              borderRadius: "6px",
+              fontSize: "20px",
+              color: colors.textSecondary,
+              padding: "4px 8px",
+              borderRadius: "4px",
               transition: "all 0.2s",
-              fontWeight: 600,
+              fontWeight: 700,
             }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.background = colors.bgHover)
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.background = colors.bgSecondary)
-            }
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = colors.bgHover;
+              e.currentTarget.style.color = colors.text;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = colors.textSecondary;
+            }}
           >
             ⋯
           </button>
@@ -739,60 +790,177 @@ export default function SyncedProfileView({
 
         <div
           style={{
-            marginTop: "16px",
-            paddingTop: "16px",
-            borderTop: `1px solid ${colors.border}`,
+            position: "absolute",
+            bottom: "128px",
+            right: "128px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+            width: "180px",
           }}
         >
           <div
+            onClick={() => setShowNotesPanel(true)}
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              marginBottom: "12px",
+              background: isDark ? "#2d3748" : "#f7f8fa",
+              borderRadius: "8px",
+              padding: "14px 16px",
+              border: isDark ? "1px solid #4a5568" : "1px solid #e5e7eb",
+              boxShadow: isDark
+                ? "0 2px 8px rgba(0,0,0,0.3)"
+                : "0 2px 8px rgba(0,0,0,0.08)",
+              cursor: "pointer",
+              transition: "all 0.2s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "translateY(-2px)";
+              e.currentTarget.style.boxShadow = isDark
+                ? "0 4px 12px rgba(0,0,0,0.4)"
+                : "0 4px 12px rgba(0,0,0,0.12)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = isDark
+                ? "0 2px 8px rgba(0,0,0,0.3)"
+                : "0 2px 8px rgba(0,0,0,0.08)";
             }}
           >
-            <span
-              style={{ fontSize: "14px", fontWeight: 600, color: colors.text }}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
             >
-              Notes
-            </span>
-            <span style={{ fontSize: "13px", color: colors.textSecondary }}>
-              2
-            </span>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "8px" }}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M3 2h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"
+                    stroke={colors.textSecondary}
+                    strokeWidth="1.5"
+                    fill="none"
+                  />
+                  <line
+                    x1="5"
+                    y1="5"
+                    x2="11"
+                    y2="5"
+                    stroke={colors.textSecondary}
+                    strokeWidth="1.5"
+                  />
+                  <line
+                    x1="5"
+                    y1="8"
+                    x2="11"
+                    y2="8"
+                    stroke={colors.textSecondary}
+                    strokeWidth="1.5"
+                  />
+                  <line
+                    x1="5"
+                    y1="11"
+                    x2="9"
+                    y2="11"
+                    stroke={colors.textSecondary}
+                    strokeWidth="1.5"
+                  />
+                </svg>
+                <span
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    color: colors.text,
+                  }}
+                >
+                  Notes
+                </span>
+              </div>
+              {notesCountLoading ? (
+                <div
+                  style={{
+                    width: "14px",
+                    height: "14px",
+                    border: `2px solid ${colors.border}`,
+                    borderTop: `2px solid ${colors.link}`,
+                    borderRadius: "50%",
+                    animation: "spin 0.8s linear infinite",
+                  }}
+                />
+              ) : (
+                <span
+                  style={{
+                    fontSize: "13px",
+                    color: colors.textSecondary,
+                    fontWeight: 500,
+                  }}
+                >
+                  {notesCount}
+                </span>
+              )}
+            </div>
           </div>
 
           <div
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              marginBottom: "12px",
+              background: isDark ? "#2d3748" : "#f7f8fa",
+              borderRadius: "8px",
+              padding: "14px 16px",
+              border: isDark ? "1px solid #4a5568" : "1px solid #e5e7eb",
+              boxShadow: isDark
+                ? "0 2px 8px rgba(0,0,0,0.3)"
+                : "0 2px 8px rgba(0,0,0,0.08)",
             }}
           >
-            <span
-              style={{ fontSize: "14px", fontWeight: 600, color: colors.text }}
-            >
-              Tasks
-            </span>
-            <span style={{ fontSize: "13px", color: colors.textSecondary }}>
-              3
-            </span>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <div
               style={{
-                width: "8px",
-                height: "8px",
-                borderRadius: "50%",
-                background: "#10b981",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                marginBottom: "10px",
               }}
-            />
-            <span style={{ fontSize: "13px", color: colors.textSecondary }}>
-              No tasks due
-            </span>
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M2 4h12M2 8h12M2 12h12"
+                  stroke={colors.textSecondary}
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+              <span
+                style={{
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  color: colors.text,
+                }}
+              >
+                Tasks
+              </span>
+            </div>
+            <p
+              style={{
+                fontSize: "13px",
+                color: colors.textSecondary,
+                margin: 0,
+              }}
+            >
+              No task history
+            </p>
           </div>
         </div>
       </section>
+
+      <NotesPanel
+        isOpen={showNotesPanel}
+        onClose={() => setShowNotesPanel(false)}
+        contactName={contactName}
+        companyName={companyName}
+        username={username}
+        hubspotContactId={hubspotContactId}
+        onNotesCountChange={setNotesCount}
+      />
 
       {toast.show && (
         <div
@@ -838,6 +1006,24 @@ export default function SyncedProfileView({
           {toast.message}
         </div>
       )}
+
+      <style>
+        {`
+    @keyframes slideInRight {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  `}
+      </style>
     </>
   );
 }

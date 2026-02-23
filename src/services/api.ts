@@ -141,3 +141,90 @@ export const linkedinApi = {
     return response.json();
   },
 };
+
+// Notes API endpoints
+export const notesApi = {
+  // Get notes for a contact
+  getNotes: async (contactId: string) => {
+    const response = await fetch(
+      `${API_BASE_URL}/hubspot/notes?contactId=${contactId}`,
+      {
+        headers: await getAuthHeaders(),
+      },
+    );
+    if (!response.ok) {
+      const error = await response.json();
+      console.error("API Error:", error);
+      throw new Error("Failed to fetch notes");
+    }
+    const data = await response.json();
+    return data;
+  },
+
+  // Create a new note
+  createNote: async (payload: {
+    noteTitle?: string;
+    dealValue?: string;
+    nextStep?: string;
+    notes: string;
+    contactId?: string;
+  }) => {
+    const response = await fetch(`${API_BASE_URL}/hubspot/create-note`, {
+      method: "POST",
+      headers: await getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error("API Error:", error);
+      throw new Error("Failed to create note");
+    }
+
+    const data = await response.json();
+    console.log("Response:", data);
+
+    return data;
+  },
+
+  // Update a note
+  updateNote: async (
+    noteId: string,
+    payload: {
+      noteTitle?: string;
+      dealValue?: string;
+      nextStep?: string;
+      notes: string;
+    },
+  ) => {
+    const response = await fetch(`${API_BASE_URL}/hubspot/notes/${noteId}`, {
+      method: "PATCH",
+      headers: await getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error("API Error:", error);
+      throw new Error("Failed to update note");
+    }
+
+    return response.json();
+  },
+
+  // Delete a note
+  deleteNote: async (noteId: string) => {
+    const response = await fetch(`${API_BASE_URL}/hubspot/notes/${noteId}`, {
+      method: "DELETE",
+      headers: await getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error("API Error:", error);
+      throw new Error("Failed to delete note");
+    }
+
+    return response.json();
+  },
+};

@@ -41,6 +41,7 @@ interface SyncedData {
   lifecycle?: string;
   phone?: string;
   hubspotOwnerId?: string;
+  hubspotContactId?: string;
 }
 
 export default function ProfileCard() {
@@ -176,8 +177,9 @@ export default function ProfileCard() {
           companyName: response.data.company || "",
           email: response.data.email || "",
           ownerName: response.data.owner || "",
-          lifecycle: response.data.lifecycle || "",
+          lifecycle: response.data.lifecycleStage || "",
           phone: response.data.phone || "",
+          hubspotContactId: response.data.contactId,
         });
       } else {
         setSyncedData(null);
