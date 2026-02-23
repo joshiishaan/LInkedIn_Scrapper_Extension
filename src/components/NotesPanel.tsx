@@ -100,6 +100,13 @@ export default function NotesPanel({
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen && showExpandedPanel) {
+      setShowExpandedPanel(false);
+      setIsClosing(false);
+    }
+  }, [isOpen, showExpandedPanel]);
+
   const handleCreateNote = () => {
     setEditingNote(null);
     setTitle("");
