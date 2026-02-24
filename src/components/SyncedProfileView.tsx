@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { hubspotApi } from "../services/api";
 import { useTheme } from "../context/ThemeContext";
-import { notesApi } from "../services/api";
+import { notesApi, tasksApi } from "../services/api";
+import TaskDashboardPanel from "./TaskDashboardPanel";
 import NotesPanel from "./NotesPanel";
 
 interface Props {
@@ -52,6 +53,9 @@ export default function SyncedProfileView({
   const [showLifecycleDropdown, setShowLifecycleDropdown] = useState(false);
   const [ownerSearch, setOwnerSearch] = useState("");
   const [lifecycleSearch, setLifecycleSearch] = useState("");
+  const [showTasksPanel, setShowTasksPanel] = useState(false);
+  const [tasksCountLoading, setTasksCountLoading] = useState(true);
+  const [tasksCount, setTasksCount] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [ownerOptions, setOwnerOptions] = useState<
@@ -107,6 +111,26 @@ export default function SyncedProfileView({
     chrome.storage.onChanged.addListener(handleStorageChange);
     return () => chrome.storage.onChanged.removeListener(handleStorageChange);
   }, [username]);
+
+  // Load tasks count
+  useEffect(() => {
+    const loadTasksCount = async () => {
+      if (!hubspotContactId) return;
+
+      setTasksCountLoading(true);
+      try {
+        const response = await tasksApi.getTasks(hubspotContactId);
+        const tasks = response.data || [];
+        setTasksCount(tasks.length);
+      } catch (err) {
+        console.error("Failed to load tasks count:", err);
+      } finally {
+        setTasksCountLoading(false);
+      }
+    };
+
+    loadTasksCount();
+  }, [hubspotContactId]);
 
   useEffect(() => {
     const style = document.createElement("style");
@@ -907,8 +931,8 @@ export default function SyncedProfileView({
               )}
             </div>
           </div>
-
           <div
+            onClick={() => setShowTasksPanel(true)}
             style={{
               background: isDark ? "#2d3748" : "#f7f8fa",
               borderRadius: "8px",
@@ -917,43 +941,73 @@ export default function SyncedProfileView({
               boxShadow: isDark
                 ? "0 2px 8px rgba(0,0,0,0.3)"
                 : "0 2px 8px rgba(0,0,0,0.08)",
+              cursor: "pointer",
+              transition: "all 0.2s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "translateY(-2px)";
+              e.currentTarget.style.boxShadow = isDark
+                ? "0 4px 12px rgba(0,0,0,0.4)"
+                : "0 4px 12px rgba(0,0,0,0.12)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = isDark
+                ? "0 2px 8px rgba(0,0,0,0.3)"
+                : "0 2px 8px rgba(0,0,0,0.08)";
             }}
           >
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: "8px",
-                marginBottom: "10px",
+                justifyContent: "space-between",
               }}
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path
-                  d="M2 4h12M2 8h12M2 12h12"
-                  stroke={colors.textSecondary}
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                />
-              </svg>
-              <span
-                style={{
-                  fontSize: "14px",
-                  fontWeight: 600,
-                  color: colors.text,
-                }}
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "8px" }}
               >
-                Tasks
-              </span>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M2 4h12M2 8h12M2 12h12"
+                    stroke={colors.textSecondary}
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <span
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    color: colors.text,
+                  }}
+                >
+                  Tasks
+                </span>
+              </div>
+              {tasksCountLoading ? (
+                <div
+                  style={{
+                    width: "14px",
+                    height: "14px",
+                    border: `2px solid ${colors.border}`,
+                    borderTop: `2px solid ${colors.link}`,
+                    borderRadius: "50%",
+                    animation: "spin 0.8s linear infinite",
+                  }}
+                />
+              ) : (
+                <span
+                  style={{
+                    fontSize: "13px",
+                    color: colors.textSecondary,
+                    fontWeight: 500,
+                  }}
+                >
+                  {tasksCount}
+                </span>
+              )}
             </div>
-            <p
-              style={{
-                fontSize: "13px",
-                color: colors.textSecondary,
-                margin: 0,
-              }}
-            >
-              No task history
-            </p>
           </div>
         </div>
       </section>
@@ -966,6 +1020,15 @@ export default function SyncedProfileView({
         username={username}
         hubspotContactId={hubspotContactId}
         onNotesCountChange={setNotesCount}
+      />
+
+      <TaskDashboardPanel
+        isOpen={showTasksPanel}
+        onClose={() => setShowTasksPanel(false)}
+        contactName={contactName}
+        hubspotContactId={hubspotContactId}
+        onTasksCountChange={setTasksCount}
+        owners={ownerOptions.map((o) => ({ id: o.value, name: o.label }))}
       />
 
       {toast.show && (

@@ -1,22 +1,26 @@
 import { useTheme } from "../context/ThemeContext";
 
-interface NoteCardProps {
-  title?: string;
-  content: string;
-  timestamp: number;
+interface TaskCardProps {
+  title: string;
+  dueDate?: string;
+  priority: "None" | "Low" | "Medium" | "High";
+  status: string;
   onClick?: () => void;
   onDelete?: () => void;
+  onToggleComplete?: () => void;
   isDeleting?: boolean;
 }
 
-export default function NoteCard({
+export default function TaskCard({
   title,
-  content,
-  timestamp,
+  dueDate,
+  priority,
+  status,
   onClick,
   onDelete,
+  onToggleComplete,
   isDeleting = false,
-}: NoteCardProps) {
+}: TaskCardProps) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const colors = {
@@ -28,25 +32,19 @@ export default function NoteCard({
     deleteHover: isDark ? "#742a2a" : "#fee2e2",
   };
 
-  const formatDate = (timestamp: number) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-
-    if (minutes < 1) return "Just now";
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    if (days < 7) return `${days}d ago`;
-    return date.toLocaleDateString();
+  const priorityColors = {
+    None: "#9ca3af",
+    Low: "#10b981",
+    Medium: "#f59e0b",
+    High: "#ef4444",
   };
 
-  const truncateContent = (text: string, maxLength: number = 80) => {
-    if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength) + "...";
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
+
+  const isCompleted = status === "COMPLETED" || status === "Completed";
 
   return (
     <div
@@ -60,7 +58,7 @@ export default function NoteCard({
         boxShadow: isDark
           ? "0 1px 3px rgba(0,0,0,0.3)"
           : "0 1px 3px rgba(0,0,0,0.08)",
-        opacity: isDeleting ? 0.5 : 1,
+        opacity: isCompleted ? 0.7 : 1,
       }}
       onClick={onClick}
       onMouseEnter={(e) => {
@@ -82,15 +80,56 @@ export default function NoteCard({
           marginBottom: "8px",
         }}
       >
-        <span
-          style={{
-            fontSize: "12px",
-            color: colors.textSecondary,
-            fontWeight: 500,
-          }}
-        >
-          {formatDate(timestamp)}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleComplete?.();
+            }}
+            style={{
+              width: "18px",
+              height: "18px",
+              borderRadius: "4px",
+              border: `2px solid ${isCompleted ? "#10b981" : colors.border}`,
+              background: isCompleted ? "#10b981" : "transparent",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "all 0.2s",
+              flexShrink: 0,
+            }}
+          >
+            {isCompleted && (
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path
+                  d="M2 6l3 3 5-6"
+                  stroke="white"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
+          </div>
+          <div
+            style={{
+              width: "8px",
+              height: "8px",
+              borderRadius: "50%",
+              background: priorityColors[priority],
+            }}
+          />
+          <span
+            style={{
+              fontSize: "12px",
+              color: colors.textSecondary,
+              fontWeight: 500,
+            }}
+          >
+            {priority}
+          </span>
+        </div>
         {onDelete && (
           <button
             onClick={(e) => {
@@ -108,6 +147,7 @@ export default function NoteCard({
               alignItems: "center",
               justifyContent: "center",
               transition: "all 0.2s",
+              opacity: isDeleting ? 0.5 : 1,
             }}
             onMouseEnter={(e) => {
               if (!isDeleting) {
@@ -144,32 +184,43 @@ export default function NoteCard({
         )}
       </div>
 
-      {title && (
-        <h4
-          style={{
-            margin: "0 0 6px 0",
-            fontSize: "15px",
-            fontWeight: 600,
-            color: colors.text,
-            lineHeight: "1.4",
-          }}
-        >
-          {title}
-        </h4>
-      )}
-
-      <p
+      <h4
         style={{
-          margin: 0,
-          fontSize: "13px",
-          color: colors.textSecondary,
-          lineHeight: "1.5",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
+          margin: "0 0 6px 0",
+          fontSize: "15px",
+          fontWeight: 600,
+          color: colors.text,
+          lineHeight: "1.4",
+          textDecoration: isCompleted ? "line-through" : "none",
         }}
       >
-        {truncateContent(content)}
-      </p>
+        {title}
+      </h4>
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <span
+          style={{
+            fontSize: "12px",
+            color: colors.textSecondary,
+            background: isDark ? "#374151" : "#f3f4f6",
+            padding: "4px 8px",
+            borderRadius: "4px",
+          }}
+        >
+          {status}
+        </span>
+        {dueDate && (
+          <span style={{ fontSize: "12px", color: colors.textSecondary }}>
+            {formatDate(dueDate)}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

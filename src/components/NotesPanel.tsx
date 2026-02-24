@@ -35,7 +35,7 @@ export default function NotesPanel({
   const isDark = theme === "dark";
   const colors = {
     bg: isDark ? "#1a202c" : "#ffffff",
-    bgSecondary: isDark ? "#2d3748" : "#f7f8fa",
+    bgSecondary: isDark ? "#2d3748" : "#f9fafb",
     border: isDark ? "#4a5568" : "#e5e7eb",
     text: isDark ? "#f7fafc" : "#000000e6",
     textSecondary: isDark ? "#a0aec0" : "#666",
@@ -48,16 +48,17 @@ export default function NotesPanel({
   const [showExpandedPanel, setShowExpandedPanel] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [isClosing, setIsClosing] = useState(false);
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
+  const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
 
-  // Form fields
   const [title, setTitle] = useState("");
   const [dealValue, setDealValue] = useState("");
   const [nextStep, setNextStep] = useState("");
   const [content, setContent] = useState("");
 
-  // Load notes from backend when panel opens
+  // Load notes on panel open
   useEffect(() => {
     if (isOpen && hubspotContactId) {
       loadNotes();
@@ -66,7 +67,6 @@ export default function NotesPanel({
 
   const loadNotes = async () => {
     if (!hubspotContactId) return;
-
     setIsLoading(true);
     try {
       const response = await notesApi.getNotes(hubspotContactId);
@@ -80,19 +80,15 @@ export default function NotesPanel({
     }
   };
 
-  // Create isolated portal container to prevent style conflicts
+  // Create portal container
   useEffect(() => {
     if (!isOpen) return;
-
-    // Create isolated container
     const container = document.createElement("div");
     container.id = "amazon-q-notes-panel-root";
     container.style.cssText =
       "position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2147483647 !important;";
     document.body.appendChild(container);
     setPortalRoot(container);
-
-    // Disable body scroll
     document.body.style.overflow = "hidden";
 
     return () => {
@@ -102,14 +98,6 @@ export default function NotesPanel({
     };
   }, [isOpen]);
 
-  // Reset expanded panel state when main panel closes
-  useEffect(() => {
-    if (!isOpen && showExpandedPanel) {
-      setShowExpandedPanel(false);
-      setIsClosing(false);
-    }
-  }, [isOpen, showExpandedPanel]);
-
   const handleCreateNote = () => {
     setEditingNote(null);
     setTitle("");
@@ -117,54 +105,28 @@ export default function NotesPanel({
     setNextStep("");
     setContent("");
     setShowExpandedPanel(true);
-    setIsClosing(true);
-    setTimeout(() => setIsClosing(false), 10);
   };
 
-  // Toggle or open note editor panel
   const handleEditNote = (note: Note) => {
-    // If clicking the same note that's already open, close the panel
-    if (editingNote?.id === note.id && showExpandedPanel) {
-      handleCloseExpandedPanel();
-      return;
-    }
-
-    // If panel is already open with a different note, just update the content without animation
-    if (showExpandedPanel) {
-      setEditingNote(note);
-      setTitle(note.noteTitle || "");
-      setDealValue(note.dealValue || "");
-      setNextStep(note.nextStep || "");
-      setContent(note.notes);
-    } else {
-      // Opening panel for the first time
-      setEditingNote(note);
-      setTitle(note.noteTitle || "");
-      setDealValue(note.dealValue || "");
-      setNextStep(note.nextStep || "");
-      setContent(note.notes);
-      setShowExpandedPanel(true);
-      setIsClosing(true);
-      setTimeout(() => setIsClosing(false), 10);
-    }
+    setEditingNote(note);
+    setTitle(note.noteTitle || "");
+    setDealValue(note.dealValue || "");
+    setNextStep(note.nextStep || "");
+    setContent(note.notes);
+    setShowExpandedPanel(true);
   };
 
-  // Animate panel close with delay
   const handleCloseExpandedPanel = () => {
-    setIsClosing(true);
-    setTimeout(() => {
-      setShowExpandedPanel(false);
-      setIsClosing(false);
-    }, 300);
+    setShowExpandedPanel(false);
+    setEditingNote(null);
   };
 
-  // Check if note has unsaved changes
   const hasChanges = () => {
     if (!editingNote) return true;
     return (
-      (title || "") !== (editingNote.noteTitle || "") ||
-      (dealValue || "") !== (editingNote.dealValue || "") ||
-      (nextStep || "") !== (editingNote.nextStep || "") ||
+      title !== (editingNote.noteTitle || "") ||
+      dealValue !== (editingNote.dealValue || "") ||
+      nextStep !== (editingNote.nextStep || "") ||
       content !== editingNote.notes
     );
   };
@@ -173,41 +135,49 @@ export default function NotesPanel({
     if (!content.trim()) return;
 
     setIsSaving(true);
+
+    const payload = {
+      noteTitle: title || undefined,
+      dealValue: dealValue || undefined,
+      nextStep: nextStep || undefined,
+      notes: content,
+    };
+
     try {
-      const payload = {
-        noteTitle: title || undefined,
-        dealValue: dealValue || undefined,
-        nextStep: nextStep || undefined,
-        notes: content,
-      };
-
       if (editingNote) {
-        // Update existing note
         await notesApi.updateNote(editingNote.id, payload);
-
-        // Update local state without refetching
-        setNotes((prevNotes) =>
-          prevNotes.map((note) =>
-            note.id === editingNote.id
+        // Update local state
+        setNotes((prev) =>
+          prev.map((n) =>
+            n.id === editingNote.id
               ? {
-                  ...note,
+                  ...n,
                   noteTitle: title,
                   dealValue: dealValue || null,
                   nextStep: nextStep || null,
                   notes: content,
                 }
-              : note,
+              : n,
           ),
         );
       } else {
-        await notesApi.createNote({
+        const response = await notesApi.createNote({
           ...payload,
           contactId: hubspotContactId,
         });
-        await loadNotes();
+        // Add to local state
+        const newNote: Note = {
+          id: response.data?.id || Date.now().toString(),
+          noteTitle: title,
+          dealValue: dealValue || null,
+          nextStep: nextStep || null,
+          notes: content,
+          timestamp: new Date().toISOString(),
+        };
+        setNotes((prev) => [newNote, ...prev]);
+        onNotesCountChange?.(notes.length + 1);
       }
-
-      setShowExpandedPanel(false);
+      handleCloseExpandedPanel();
     } catch (err) {
       console.error("Failed to save note:", err);
       alert("Failed to save note");
@@ -216,22 +186,40 @@ export default function NotesPanel({
     }
   };
 
-  const deleteNote = async (id: string) => {
+  const deleteNote = (id: string) => {
+    setNoteToDelete(id);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!noteToDelete) return;
+
+    const noteId = noteToDelete;
+    setShowDeleteConfirm(false);
+    setNoteToDelete(null);
+    setDeletingNoteId(noteId);
+
     try {
-      await notesApi.deleteNote(id);
-      // Reload notes after deletion
-      await loadNotes();
+      await notesApi.deleteNote(noteId);
+      setNotes((prev) => prev.filter((n) => n.id !== noteId));
+      onNotesCountChange?.(notes.length - 1);
     } catch (err) {
       console.error("Failed to delete note:", err);
       alert("Failed to delete note");
+    } finally {
+      setDeletingNoteId(null);
     }
+  };
+
+  const cancelDelete = () => {
+    setShowDeleteConfirm(false);
+    setNoteToDelete(null);
   };
 
   if (!isOpen || !portalRoot) return null;
 
   const panelContent = (
     <>
-      {/* Backdrop */}
       <div
         onClick={onClose}
         style={{
@@ -246,309 +234,315 @@ export default function NotesPanel({
         }}
       />
 
-      {/* Main Side Panel */}
-      <div
-        style={{
-          position: "fixed",
-          top: 0,
-          right: 0,
-          bottom: 0,
-          width: "420px",
-          background: colors.bg,
-          boxShadow: isDark
-            ? "-4px 0 24px rgba(0, 0, 0, 0.5)"
-            : "-4px 0 24px rgba(0, 0, 0, 0.15)",
-          zIndex: 2147483647,
-          display: "flex",
-          flexDirection: "column",
-          animation: "expandFromRight 0.3s ease-out",
-          pointerEvents: "auto",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            padding: "20px 24px",
-            borderBottom: `1px solid ${colors.border}`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <div>
-            <h2
-              style={{
-                margin: 0,
-                fontSize: "20px",
-                fontWeight: 600,
-                color: colors.text,
-              }}
-            >
-              Notes
-            </h2>
-            <p
-              style={{
-                margin: "4px 0 0 0",
-                fontSize: "13px",
-                color: colors.textSecondary,
-              }}
-            >
-              {contactName}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              padding: "8px",
-              borderRadius: "6px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "background 0.2s",
-            }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.background = colors.hover)
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.background = "transparent")
-            }
-          >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path
-                d="M15 5L5 15M5 5l10 10"
-                stroke={colors.text}
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
-        </div>
-
-        {/* Create Note Button */}
-        <div
-          style={{
-            padding: "20px 24px",
-            borderBottom: `1px solid ${colors.border}`,
-          }}
-        >
-          <button
-            onClick={handleCreateNote}
-            style={{
-              width: "100%",
-              padding: "12px 20px",
-              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-              color: "white",
-              border: "none",
-              borderRadius: "8px",
-              cursor: "pointer",
-              fontSize: "14px",
-              fontWeight: 600,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "8px",
-              transition: "all 0.2s",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "translateY(-1px)";
-              e.currentTarget.style.boxShadow =
-                "0 4px 12px rgba(102, 126, 234, 0.4)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "translateY(0)";
-              e.currentTarget.style.boxShadow = "none";
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path
-                d="M8 3v10M3 8h10"
-                stroke="white"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            </svg>
-            Create New Note
-          </button>
-        </div>
-
-        {/* Notes List */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
-          {isLoading ? (
-            <div
-              style={{
-                textAlign: "center",
-                padding: "40px 0",
-                color: colors.textSecondary,
-              }}
-            >
-              <div
-                style={{
-                  width: "40px",
-                  height: "40px",
-                  border: `3px solid ${colors.border}`,
-                  borderTop: `3px solid ${colors.link}`,
-                  borderRadius: "50%",
-                  margin: "0 auto 16px",
-                  animation: "spin 1s linear infinite",
-                }}
-              />
-              Loading notes...
-            </div>
-          ) : notes.length === 0 ? (
-            <div
-              style={{
-                textAlign: "center",
-                padding: "40px 20px",
-                color: colors.textSecondary,
-              }}
-            >
-              <svg
-                width="48"
-                height="48"
-                viewBox="0 0 48 48"
-                fill="none"
-                style={{ margin: "0 auto 16px" }}
-              >
-                <path
-                  d="M8 6h32a2 2 0 0 1 2 2v32a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"
-                  stroke={colors.textSecondary}
-                  strokeWidth="2"
-                  fill="none"
-                />
-                <line
-                  x1="14"
-                  y1="16"
-                  x2="34"
-                  y2="16"
-                  stroke={colors.textSecondary}
-                  strokeWidth="2"
-                />
-                <line
-                  x1="14"
-                  y1="24"
-                  x2="34"
-                  y2="24"
-                  stroke={colors.textSecondary}
-                  strokeWidth="2"
-                />
-                <line
-                  x1="14"
-                  y1="32"
-                  x2="26"
-                  y2="32"
-                  stroke={colors.textSecondary}
-                  strokeWidth="2"
-                />
-              </svg>
-              <p style={{ fontSize: "14px", margin: 0 }}>No notes yet</p>
-              <p style={{ fontSize: "13px", margin: "8px 0 0 0" }}>
-                Click "Create New Note" to get started
-              </p>
-            </div>
-          ) : (
-            <div
-              style={{ display: "flex", flexDirection: "column", gap: "12px" }}
-            >
-              {notes.map((note) => (
-                <NoteCard
-                  key={note.id}
-                  title={note.noteTitle || "Untitled Note"}
-                  content={note.notes || "No content"}
-                  timestamp={new Date(note.timestamp).getTime()}
-                  onClick={() => handleEditNote(note)}
-                  onDelete={() => deleteNote(note.id)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Expanded Panel for Creating/Editing Notes */}
-      {(showExpandedPanel || isClosing) && (
+      {!showExpandedPanel && (
         <div
           style={{
             position: "fixed",
             top: 0,
             right: 0,
             bottom: 0,
-            width: showExpandedPanel && !isClosing ? "calc(90vw - 420px)" : "0",
-            marginRight: "420px",
+            width: "420px",
             background: colors.bg,
+            boxShadow: isDark
+              ? "-4px 0 24px rgba(0, 0, 0, 0.5)"
+              : "-4px 0 24px rgba(0, 0, 0, 0.15)",
             zIndex: 2147483647,
             display: "flex",
             flexDirection: "column",
-            transition: "width 0.3s ease-out",
-            overflowY: "auto",
-            overflowX: "hidden",
             pointerEvents: "auto",
           }}
-          onClick={(e) => e.stopPropagation()}
         >
-          {/* Close Button */}
-          <button
-            onClick={handleCloseExpandedPanel}
-            title="Close panel"
+          <div
             style={{
-              position: "absolute",
-              top: "20px",
-              left: "20px",
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              padding: "4px",
+              padding: "20px 24px",
+              borderBottom: `1px solid ${colors.border}`,
               display: "flex",
               alignItems: "center",
-              justifyContent: "center",
-              transition: "opacity 0.2s",
-              zIndex: 10,
+              justifyContent: "space-between",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.6")}
-            onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M9 18l6-6-6-6"
-                stroke={colors.text}
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-
-          <div style={{ padding: "32px 40px 32px 64px" }}>
-            {/* Header */}
-            <div style={{ marginBottom: "32px" }}>
+            <div>
               <h2
                 style={{
-                  fontSize: "24px",
+                  margin: 0,
+                  fontSize: "20px",
                   fontWeight: 600,
                   color: colors.text,
-                  margin: "0 0 8px 0",
                 }}
               >
-                {editingNote ? "Edit Note" : "New Note"}
+                Notes
               </h2>
               <p
                 style={{
-                  fontSize: "14px",
+                  margin: "4px 0 0 0",
+                  fontSize: "13px",
                   color: colors.textSecondary,
+                }}
+              >
+                {contactName}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: "8px",
+                borderRadius: "6px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "background 0.2s",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = colors.hover)
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "transparent")
+              }
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path
+                  d="M15 5L5 15M5 5l10 10"
+                  stroke={colors.text}
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          </div>
+
+          <div
+            style={{
+              padding: "20px 24px",
+              borderBottom: `1px solid ${colors.border}`,
+            }}
+          >
+            <button
+              onClick={handleCreateNote}
+              style={{
+                width: "100%",
+                padding: "12px 20px",
+                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                color: "white",
+                border: "none",
+                borderRadius: "8px",
+                cursor: "pointer",
+                fontSize: "14px",
+                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px",
+                transition: "all 0.2s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-1px)";
+                e.currentTarget.style.boxShadow =
+                  "0 4px 12px rgba(102, 126, 234, 0.4)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "none";
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M8 3v10M3 8h10"
+                  stroke="white"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+              Create New Note
+            </button>
+          </div>
+
+          <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+            {isLoading ? (
+              <div
+                style={{
+                  textAlign: "center",
+                  padding: "40px 0",
+                  color: colors.textSecondary,
+                }}
+              >
+                <div
+                  style={{
+                    width: "40px",
+                    height: "40px",
+                    border: `3px solid ${colors.border}`,
+                    borderTop: `3px solid ${colors.link}`,
+                    borderRadius: "50%",
+                    margin: "0 auto 16px",
+                    animation: "spin 1s linear infinite",
+                  }}
+                />
+                Loading notes...
+              </div>
+            ) : notes.length === 0 ? (
+              <div
+                style={{
+                  textAlign: "center",
+                  padding: "40px 20px",
+                  color: colors.textSecondary,
+                }}
+              >
+                <svg
+                  width="48"
+                  height="48"
+                  viewBox="0 0 48 48"
+                  fill="none"
+                  style={{ margin: "0 auto 16px" }}
+                >
+                  <path
+                    d="M8 6h32a2 2 0 0 1 2 2v32a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"
+                    stroke={colors.textSecondary}
+                    strokeWidth="2"
+                    fill="none"
+                  />
+                  <line
+                    x1="14"
+                    y1="16"
+                    x2="34"
+                    y2="16"
+                    stroke={colors.textSecondary}
+                    strokeWidth="2"
+                  />
+                  <line
+                    x1="14"
+                    y1="24"
+                    x2="34"
+                    y2="24"
+                    stroke={colors.textSecondary}
+                    strokeWidth="2"
+                  />
+                  <line
+                    x1="14"
+                    y1="32"
+                    x2="26"
+                    y2="32"
+                    stroke={colors.textSecondary}
+                    strokeWidth="2"
+                  />
+                </svg>
+                <p style={{ fontSize: "14px", margin: 0 }}>No notes yet</p>
+                <p style={{ fontSize: "13px", margin: "8px 0 0 0" }}>
+                  Click "Create New Note" to get started
+                </p>
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px",
+                }}
+              >
+                {notes.map((note) => (
+                  <NoteCard
+                    key={note.id}
+                    title={note.noteTitle || "Untitled Note"}
+                    content={note.notes || "No content"}
+                    timestamp={new Date(note.timestamp).getTime()}
+                    onClick={() => handleEditNote(note)}
+                    onDelete={() => deleteNote(note.id)}
+                    isDeleting={deletingNoteId === note.id}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showExpandedPanel && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: "420px",
+            background: colors.bg,
+            boxShadow: isDark
+              ? "-4px 0 24px rgba(0, 0, 0, 0.5)"
+              : "-4px 0 24px rgba(0, 0, 0, 0.15)",
+            zIndex: 2147483647,
+            display: "flex",
+            flexDirection: "column",
+            overflowY: "auto",
+            pointerEvents: "auto",
+          }}
+        >
+          <div
+            style={{
+              padding: "18px 24px",
+              borderBottom: `1px solid ${colors.border}`,
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+            }}
+          >
+            <button
+              onClick={handleCloseExpandedPanel}
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: "4px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path
+                  d="M12 5L7 10l5 5"
+                  stroke={colors.text}
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+            <h2
+              style={{
+                margin: 0,
+                fontSize: "18px",
+                fontWeight: 600,
+                color: colors.text,
+              }}
+            >
+              {editingNote ? "Edit Note" : "New Note"}
+            </h2>
+          </div>
+
+          <div style={{ padding: "24px", flex: 1 }}>
+            <div
+              style={{
+                marginBottom: "24px",
+                padding: "12px 16px",
+                background: colors.bgSecondary,
+                borderRadius: "8px",
+              }}
+            >
+              <p
+                style={{
                   margin: 0,
+                  fontSize: "14px",
+                  color: colors.text,
+                  fontWeight: 500,
                 }}
               >
                 {contactName} • {companyName}
               </p>
             </div>
 
-            {/* Form */}
             <div
-              style={{ display: "flex", flexDirection: "column", gap: "24px" }}
+              style={{ display: "flex", flexDirection: "column", gap: "20px" }}
             >
-              {/* Title */}
               <div>
                 <label
                   style={{
@@ -568,25 +562,18 @@ export default function NotesPanel({
                   placeholder="e.g., Initial Discovery Call"
                   style={{
                     width: "100%",
-                    padding: "12px 16px",
+                    padding: "10px 14px",
                     border: `1px solid ${colors.border}`,
-                    borderRadius: "8px",
+                    borderRadius: "6px",
                     fontSize: "14px",
                     color: colors.text,
-                    background: colors.bgSecondary,
+                    background: colors.bg,
                     outline: "none",
                     boxSizing: "border-box",
                   }}
-                  onFocus={(e) =>
-                    (e.currentTarget.style.borderColor = colors.link)
-                  }
-                  onBlur={(e) =>
-                    (e.currentTarget.style.borderColor = colors.border)
-                  }
                 />
               </div>
 
-              {/* Deal Value */}
               <div>
                 <label
                   style={{
@@ -606,25 +593,18 @@ export default function NotesPanel({
                   placeholder="e.g., $50,000"
                   style={{
                     width: "100%",
-                    padding: "12px 16px",
+                    padding: "10px 14px",
                     border: `1px solid ${colors.border}`,
-                    borderRadius: "8px",
+                    borderRadius: "6px",
                     fontSize: "14px",
                     color: colors.text,
-                    background: colors.bgSecondary,
+                    background: colors.bg,
                     outline: "none",
                     boxSizing: "border-box",
                   }}
-                  onFocus={(e) =>
-                    (e.currentTarget.style.borderColor = colors.link)
-                  }
-                  onBlur={(e) =>
-                    (e.currentTarget.style.borderColor = colors.border)
-                  }
                 />
               </div>
 
-              {/* Next Step */}
               <div>
                 <label
                   style={{
@@ -644,25 +624,18 @@ export default function NotesPanel({
                   placeholder="e.g., Schedule demo for next week"
                   style={{
                     width: "100%",
-                    padding: "12px 16px",
+                    padding: "10px 14px",
                     border: `1px solid ${colors.border}`,
-                    borderRadius: "8px",
+                    borderRadius: "6px",
                     fontSize: "14px",
                     color: colors.text,
-                    background: colors.bgSecondary,
+                    background: colors.bg,
                     outline: "none",
                     boxSizing: "border-box",
                   }}
-                  onFocus={(e) =>
-                    (e.currentTarget.style.borderColor = colors.link)
-                  }
-                  onBlur={(e) =>
-                    (e.currentTarget.style.borderColor = colors.border)
-                  }
                 />
               </div>
 
-              {/* Notes Content */}
               <div>
                 <label
                   style={{
@@ -673,101 +646,233 @@ export default function NotesPanel({
                     marginBottom: "8px",
                   }}
                 >
-                  Notes
+                  Notes*
                 </label>
                 <textarea
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  placeholder="Add detailed notes about the conversation, key points discussed, pain points, objections, etc."
+                  placeholder="Add detailed notes..."
                   style={{
                     width: "100%",
                     minHeight: "200px",
-                    padding: "12px 16px",
+                    padding: "10px 14px",
                     border: `1px solid ${colors.border}`,
-                    borderRadius: "8px",
+                    borderRadius: "6px",
                     fontSize: "14px",
                     color: colors.text,
-                    background: colors.bgSecondary,
+                    background: colors.bg,
                     resize: "vertical",
                     fontFamily: "inherit",
                     outline: "none",
                     boxSizing: "border-box",
                     lineHeight: "1.6",
                   }}
-                  onFocus={(e) =>
-                    (e.currentTarget.style.borderColor = colors.link)
-                  }
-                  onBlur={(e) =>
-                    (e.currentTarget.style.borderColor = colors.border)
-                  }
                 />
               </div>
+            </div>
+          </div>
 
-              {/* Action Buttons */}
-              <div style={{ display: "flex", gap: "12px", paddingTop: "16px" }}>
-                <button
-                  onClick={handleCloseExpandedPanel}
-                  style={{
-                    flex: 1,
-                    padding: "12px 24px",
-                    background: colors.bgSecondary,
-                    color: colors.text,
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: "8px",
-                    cursor: "pointer",
-                    fontSize: "14px",
-                    fontWeight: 600,
-                    transition: "all 0.2s",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = colors.hover;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = colors.bgSecondary;
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveNote}
-                  disabled={
-                    !content.trim() ||
-                    isSaving ||
-                    (editingNote ? !hasChanges() : false)
-                  }
-                  title={
-                    !content.trim()
-                      ? "Please add notes before saving"
-                      : editingNote && !hasChanges()
-                        ? "No changes to update"
-                        : ""
-                  }
-                  style={{
-                    flex: 1,
-                    padding: "12px 24px",
-                    background:
-                      content.trim() && (!editingNote || hasChanges())
-                        ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-                        : colors.border,
-                    color: "white",
-                    border: "none",
-                    borderRadius: "8px",
-                    cursor:
-                      content.trim() && (!editingNote || hasChanges())
-                        ? "pointer"
-                        : "not-allowed",
-                    fontSize: "14px",
-                    fontWeight: 600,
-                    transition: "all 0.2s",
-                  }}
-                >
-                  {isSaving
-                    ? "Saving..."
-                    : editingNote
-                      ? "Update Note"
-                      : "Create Note"}
-                </button>
-              </div>
+          <div
+            style={{
+              padding: "16px 24px",
+              borderTop: `1px solid ${colors.border}`,
+              display: "flex",
+              gap: "12px",
+            }}
+          >
+            <button
+              onClick={(e) => {
+                if (isSaving) {
+                  e.preventDefault();
+                  return;
+                }
+                handleCloseExpandedPanel();
+              }}
+              disabled={isSaving}
+              style={{
+                flex: 1,
+                padding: "12px 24px",
+                background: colors.bgSecondary,
+                color: colors.text,
+                border: `1px solid ${colors.border}`,
+                borderRadius: "8px",
+                cursor: isSaving ? "not-allowed" : "pointer",
+                fontSize: "14px",
+                fontWeight: 600,
+                transition: "all 0.2s",
+              }}
+              onMouseEnter={(e) => {
+                if (!isSaving) {
+                  e.currentTarget.style.background = colors.hover;
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = colors.bgSecondary;
+                e.currentTarget.style.transform = "translateY(0)";
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveNote}
+              disabled={
+                !content.trim() || isSaving || !!(editingNote && !hasChanges())
+              }
+              style={{
+                flex: 1,
+                padding: "10px 20px",
+                background:
+                  content.trim() && (!editingNote || hasChanges())
+                    ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+                    : colors.border,
+                color: "white",
+                border: "none",
+                borderRadius: "6px",
+                cursor:
+                  content.trim() && (!editingNote || hasChanges())
+                    ? "pointer"
+                    : "not-allowed",
+                fontSize: "14px",
+                fontWeight: 600,
+                transition: "all 0.2s",
+                opacity:
+                  content.trim() && (!editingNote || hasChanges()) ? 1 : 0.6,
+              }}
+              onMouseEnter={(e) => {
+                if (
+                  !content.trim() ||
+                  isSaving ||
+                  !!(editingNote && !hasChanges())
+                ) {
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                  e.currentTarget.style.boxShadow =
+                    "0 4px 12px rgba(102, 126, 234, 0.4)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (
+                  !content.trim() ||
+                  isSaving ||
+                  !!(editingNote && !hasChanges())
+                ) {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = "none";
+                }
+              }}
+            >
+              {isSaving
+                ? "Saving..."
+                : editingNote
+                  ? "Update Note"
+                  : "Create Note"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showDeleteConfirm && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2147483649,
+            pointerEvents: "auto",
+          }}
+          onClick={cancelDelete}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: colors.bg,
+              borderRadius: "12px",
+              padding: "24px",
+              maxWidth: "400px",
+              width: "90%",
+              boxShadow: isDark
+                ? "0 20px 25px -5px rgba(0, 0, 0, 0.5)"
+                : "0 20px 25px -5px rgba(0, 0, 0, 0.1)",
+            }}
+          >
+            <h3
+              style={{
+                margin: "0 0 12px 0",
+                fontSize: "18px",
+                fontWeight: 600,
+                color: colors.text,
+              }}
+            >
+              Delete Note
+            </h3>
+            <p
+              style={{
+                margin: "0 0 24px 0",
+                fontSize: "14px",
+                color: colors.textSecondary,
+                lineHeight: "1.5",
+              }}
+            >
+              Are you sure you want to delete this note? This action cannot be
+              undone.
+            </p>
+            <div
+              style={{
+                display: "flex",
+                gap: "12px",
+                justifyContent: "flex-end",
+              }}
+            >
+              <button
+                onClick={cancelDelete}
+                style={{
+                  padding: "10px 20px",
+                  background: "transparent",
+                  color: colors.text,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  transition: "all 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = colors.bgSecondary;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                style={{
+                  padding: "10px 20px",
+                  background: "#ef4444",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  transition: "all 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "#dc2626";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "#ef4444";
+                }}
+              >
+                Delete
+              </button>
             </div>
           </div>
         </div>
@@ -775,20 +880,10 @@ export default function NotesPanel({
 
       <style>
         {`
-    @keyframes slideInRight {
-      from {
-        transform: translateX(100%);
-        opacity: 0;
-      }
-      to {
-        transform: translateX(0);
-        opacity: 1;
-      }
-    }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-  `}
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}
       </style>
     </>
   );
