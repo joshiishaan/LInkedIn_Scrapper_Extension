@@ -8,8 +8,6 @@ import { useShadowPortal } from "../hooks/useShadowPortal";
 interface Note {
   id: string;
   noteTitle: string;
-  dealValue: string | null;
-  nextStep: string | null;
   notes: string;
   timestamp: string;
 }
@@ -58,8 +56,6 @@ export default function NotesPanel({
   const [contentError, setContentError] = useState("");
 
   const [title, setTitle] = useState("");
-  const [dealValue, setDealValue] = useState("");
-  const [nextStep, setNextStep] = useState("");
 
   const shadowRoot = useShadowPortal(isOpen);
 
@@ -88,8 +84,6 @@ export default function NotesPanel({
   const handleCreateNote = () => {
     setEditingNote(null);
     setTitle("");
-    setDealValue("");
-    setNextStep("");
     setContent("");
     setShowExpandedPanel(true);
   };
@@ -97,8 +91,6 @@ export default function NotesPanel({
   const handleEditNote = (note: Note) => {
     setEditingNote(note);
     setTitle(note.noteTitle || "");
-    setDealValue(note.dealValue || "");
-    setNextStep(note.nextStep || "");
     setContent(note.notes);
     setShowExpandedPanel(true);
   };
@@ -111,10 +103,7 @@ export default function NotesPanel({
   const hasChanges = () => {
     if (!editingNote) return true;
     return (
-      title !== (editingNote.noteTitle || "") ||
-      dealValue !== (editingNote.dealValue || "") ||
-      nextStep !== (editingNote.nextStep || "") ||
-      content !== editingNote.notes
+      title !== (editingNote.noteTitle || "") || content !== editingNote.notes
     );
   };
 
@@ -136,8 +125,6 @@ export default function NotesPanel({
 
     const payload = {
       noteTitle: title || undefined,
-      dealValue: dealValue || undefined,
-      nextStep: nextStep || undefined,
       notes: trimmed,
     };
 
@@ -150,8 +137,6 @@ export default function NotesPanel({
               ? {
                   ...n,
                   noteTitle: title,
-                  dealValue: dealValue || null,
-                  nextStep: nextStep || null,
                   notes: trimmed,
                 }
               : n,
@@ -165,8 +150,6 @@ export default function NotesPanel({
         const newNote: Note = {
           id: response.data,
           noteTitle: title,
-          dealValue: dealValue || null,
-          nextStep: nextStep || null,
           notes: trimmed,
           timestamp: new Date().toISOString(),
         };
@@ -566,68 +549,6 @@ export default function NotesPanel({
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="e.g., Initial Discovery Call"
-                  style={{
-                    width: "100%",
-                    padding: "10px 14px",
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: "6px",
-                    fontSize: "14px",
-                    color: colors.text,
-                    background: colors.bg,
-                    outline: "none",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
-
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    color: colors.text,
-                    marginBottom: "8px",
-                  }}
-                >
-                  Deal Value
-                </label>
-                <input
-                  type="text"
-                  value={dealValue}
-                  onChange={(e) => setDealValue(e.target.value)}
-                  placeholder="e.g., $50,000"
-                  style={{
-                    width: "100%",
-                    padding: "10px 14px",
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: "6px",
-                    fontSize: "14px",
-                    color: colors.text,
-                    background: colors.bg,
-                    outline: "none",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
-
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    color: colors.text,
-                    marginBottom: "8px",
-                  }}
-                >
-                  Next Step
-                </label>
-                <input
-                  type="text"
-                  value={nextStep}
-                  onChange={(e) => setNextStep(e.target.value)}
-                  placeholder="e.g., Schedule demo for next week"
                   style={{
                     width: "100%",
                     padding: "10px 14px",

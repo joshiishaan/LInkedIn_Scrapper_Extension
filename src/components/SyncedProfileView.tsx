@@ -1434,7 +1434,10 @@ export default function SyncedProfileView({
               <input
                 type="tel"
                 value={editableMobile}
-                onChange={(e) => setEditableMobile(e.target.value)}
+                onChange={(e) => {
+                  const onlyNumbers = e.target.value.replace(/[^0-9+]/g, "");
+                  setEditableMobile(onlyNumbers);
+                }}
                 placeholder="Add mobile number"
                 onFocus={() => setIsMobileFocused(true)}
                 onBlur={() => setIsMobileFocused(false)}
