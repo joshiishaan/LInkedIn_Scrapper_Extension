@@ -44,7 +44,7 @@ export default function TaskCard({
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
-  const isCompleted = status === "COMPLETED" || status === "Completed";
+  const isCompleted = status.toUpperCase() === "COMPLETED";
 
   return (
     <div

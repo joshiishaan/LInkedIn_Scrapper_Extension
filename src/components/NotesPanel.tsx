@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useTheme } from "../context/ThemeContext";
 import NoteCard from "./NoteCard";
 import { notesApi } from "../services/api";
+import { useShadowPortal } from "../hooks/useShadowPortal";
 
 interface Note {
   id: string;
@@ -48,15 +49,19 @@ export default function NotesPanel({
   const [showExpandedPanel, setShowExpandedPanel] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
   const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
 
+  const [content, setContent] = useState("");
+  const [showValidation, setShowValidation] = useState(false);
+  const [contentError, setContentError] = useState("");
+
   const [title, setTitle] = useState("");
   const [dealValue, setDealValue] = useState("");
   const [nextStep, setNextStep] = useState("");
-  const [content, setContent] = useState("");
+
+  const shadowRoot = useShadowPortal(isOpen);
 
   // Load notes on panel open
   useEffect(() => {
@@ -79,24 +84,6 @@ export default function NotesPanel({
       setIsLoading(false);
     }
   };
-
-  // Create portal container
-  useEffect(() => {
-    if (!isOpen) return;
-    const container = document.createElement("div");
-    container.id = "amazon-q-notes-panel-root";
-    container.style.cssText =
-      "position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2147483647 !important;";
-    document.body.appendChild(container);
-    setPortalRoot(container);
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = "";
-      container.remove();
-      setPortalRoot(null);
-    };
-  }, [isOpen]);
 
   const handleCreateNote = () => {
     setEditingNote(null);
@@ -132,21 +119,31 @@ export default function NotesPanel({
   };
 
   const handleSaveNote = async () => {
-    if (!content.trim()) return;
+    const trimmed = content.trim();
 
+    // Validate only when user clicks the button
+    if (!trimmed) {
+      setContentError("Note is required.");
+      setShowValidation(true);
+      return;
+    }
+
+    if (isSaving) return;
+
+    setShowValidation(false);
+    setContentError("");
     setIsSaving(true);
 
     const payload = {
       noteTitle: title || undefined,
       dealValue: dealValue || undefined,
       nextStep: nextStep || undefined,
-      notes: content,
+      notes: trimmed,
     };
 
     try {
       if (editingNote) {
         await notesApi.updateNote(editingNote.id, payload);
-        // Update local state
         setNotes((prev) =>
           prev.map((n) =>
             n.id === editingNote.id
@@ -155,7 +152,7 @@ export default function NotesPanel({
                   noteTitle: title,
                   dealValue: dealValue || null,
                   nextStep: nextStep || null,
-                  notes: content,
+                  notes: trimmed,
                 }
               : n,
           ),
@@ -165,13 +162,12 @@ export default function NotesPanel({
           ...payload,
           contactId: hubspotContactId,
         });
-        // Add to local state
         const newNote: Note = {
-          id: response.data?.id || Date.now().toString(),
+          id: response.data,
           noteTitle: title,
           dealValue: dealValue || null,
           nextStep: nextStep || null,
-          notes: content,
+          notes: trimmed,
           timestamp: new Date().toISOString(),
         };
         setNotes((prev) => [newNote, ...prev]);
@@ -216,7 +212,9 @@ export default function NotesPanel({
     setNoteToDelete(null);
   };
 
-  if (!isOpen || !portalRoot) return null;
+  if (!isOpen || !shadowRoot) return null;
+
+  const isFormValid = content.trim() && (!editingNote || hasChanges());
 
   const panelContent = (
     <>
@@ -476,6 +474,14 @@ export default function NotesPanel({
             pointerEvents: "auto",
           }}
         >
+          <line
+            x1="14"
+            y1="32"
+            x2="26"
+            y2="32"
+            stroke={colors.textSecondary}
+            strokeWidth="2"
+          />
           <div
             style={{
               padding: "18px 24px",
@@ -646,11 +652,18 @@ export default function NotesPanel({
                     marginBottom: "8px",
                   }}
                 >
-                  Notes*
+                  Notes
                 </label>
                 <textarea
                   value={content}
-                  onChange={(e) => setContent(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setContent(value);
+
+                    if (showValidation) {
+                      setContentError(value.trim() ? "" : "Note is required.");
+                    }
+                  }}
                   placeholder="Add detailed notes..."
                   style={{
                     width: "100%",
@@ -668,6 +681,17 @@ export default function NotesPanel({
                     lineHeight: "1.6",
                   }}
                 />
+                {showValidation && contentError && (
+                  <div
+                    style={{
+                      color: "#ef4444",
+                      fontSize: "12px",
+                      marginTop: "4px",
+                    }}
+                  >
+                    {contentError}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -692,14 +716,15 @@ export default function NotesPanel({
               style={{
                 flex: 1,
                 padding: "12px 24px",
-                background: colors.bgSecondary,
-                color: colors.text,
+                background: isSaving ? colors.border : colors.bgSecondary,
+                color: isSaving ? colors.textSecondary : colors.text,
                 border: `1px solid ${colors.border}`,
                 borderRadius: "8px",
                 cursor: isSaving ? "not-allowed" : "pointer",
                 fontSize: "14px",
                 fontWeight: 600,
                 transition: "all 0.2s",
+                opacity: isSaving ? 0.6 : 1,
               }}
               onMouseEnter={(e) => {
                 if (!isSaving) {
@@ -716,49 +741,33 @@ export default function NotesPanel({
             </button>
             <button
               onClick={handleSaveNote}
-              disabled={
-                !content.trim() || isSaving || !!(editingNote && !hasChanges())
-              }
+              disabled={isSaving || !!(editingNote && !hasChanges())}
               style={{
                 flex: 1,
                 padding: "10px 20px",
                 background:
-                  content.trim() && (!editingNote || hasChanges())
+                  isFormValid && !isSaving
                     ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
                     : colors.border,
                 color: "white",
                 border: "none",
                 borderRadius: "6px",
-                cursor:
-                  content.trim() && (!editingNote || hasChanges())
-                    ? "pointer"
-                    : "not-allowed",
+                cursor: isFormValid && !isSaving ? "pointer" : "not-allowed",
                 fontSize: "14px",
                 fontWeight: 600,
                 transition: "all 0.2s",
-                opacity:
-                  content.trim() && (!editingNote || hasChanges()) ? 1 : 0.6,
+                opacity: isFormValid && !isSaving ? 1 : 0.6,
               }}
               onMouseEnter={(e) => {
-                if (
-                  !content.trim() ||
-                  isSaving ||
-                  !!(editingNote && !hasChanges())
-                ) {
+                if (isFormValid && !isSaving) {
                   e.currentTarget.style.transform = "translateY(-1px)";
                   e.currentTarget.style.boxShadow =
                     "0 4px 12px rgba(102, 126, 234, 0.4)";
                 }
               }}
               onMouseLeave={(e) => {
-                if (
-                  !content.trim() ||
-                  isSaving ||
-                  !!(editingNote && !hasChanges())
-                ) {
-                  e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow = "none";
-                }
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "none";
               }}
             >
               {isSaving
@@ -888,5 +897,11 @@ export default function NotesPanel({
     </>
   );
 
-  return createPortal(panelContent, portalRoot);
+  return createPortal(
+    <>
+      <style>{`* { box-sizing: border-box; }`}</style>
+      {panelContent}
+    </>,
+    shadowRoot,
+  );
 }

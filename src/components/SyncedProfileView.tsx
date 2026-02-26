@@ -4,6 +4,8 @@ import { useTheme } from "../context/ThemeContext";
 import { notesApi, tasksApi } from "../services/api";
 import TaskDashboardPanel from "./TaskDashboardPanel";
 import NotesPanel from "./NotesPanel";
+import { createPortal } from "react-dom";
+import { useShadowPortal } from "../hooks/useShadowPortal";
 
 interface Props {
   contactName: string;
@@ -15,7 +17,20 @@ interface Props {
   username: string;
   hubspotOwnerId?: string;
   hubspotContactId?: string;
+  leadStatus?: string;
+  leadSource?: string;
+  connectedOnSource?: string;
 }
+
+type CrmInitialState = {
+  ownerId: string;
+  lifecycle: string;
+  leadStatus: string;
+  leadSource: string;
+  connectedOnSource: string;
+  email: string;
+  mobile: string;
+};
 
 export default function SyncedProfileView({
   contactName,
@@ -27,6 +42,9 @@ export default function SyncedProfileView({
   username,
   hubspotOwnerId,
   hubspotContactId,
+  leadStatus,
+  leadSource,
+  connectedOnSource,
 }: Props) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
@@ -51,27 +69,20 @@ export default function SyncedProfileView({
   const [isMobileHovered, setIsMobileHovered] = useState(false);
   const [showOwnerDropdown, setShowOwnerDropdown] = useState(false);
   const [showLifecycleDropdown, setShowLifecycleDropdown] = useState(false);
+  const [showLeadStatusDropdown, setShowLeadStatusDropdown] = useState(false);
+  const [showLeadSourceDropdown, setShowLeadSourceDropdown] = useState(false);
+  const [showConnectedOnSourceDropdown, setShowConnectedOnSourceDropdown] =
+    useState(false);
   const [ownerSearch, setOwnerSearch] = useState("");
   const [lifecycleSearch, setLifecycleSearch] = useState("");
+  const [leadStatusSearch, setLeadStatusSearch] = useState("");
+  const [leadSourceSearch, setLeadSourceSearch] = useState("");
+  const [connectedOnSourceSearch, setConnectedOnSourceSearch] = useState("");
   const [showTasksPanel, setShowTasksPanel] = useState(false);
   const [tasksCountLoading, setTasksCountLoading] = useState(true);
   const [tasksCount, setTasksCount] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
   const [updating, setUpdating] = useState(false);
-  const [ownerOptions, setOwnerOptions] = useState<
-    Array<{ label: string; value: string }>
-  >([]);
-  const [lifecycleOptions, setLifecycleOptions] = useState<
-    Array<{ label: string; value: string }>
-  >([]);
-  const [selectedOwner, setSelectedOwner] = useState<{
-    label: string;
-    value: string;
-  }>({ label: "", value: "" });
-  const [selectedLifecycle, setSelectedLifecycle] = useState<{
-    label: string;
-    value: string;
-  }>({ label: "", value: "" });
   const [toast, setToast] = useState<{
     show: boolean;
     message: string;
@@ -82,11 +93,53 @@ export default function SyncedProfileView({
     type: "success",
   });
 
+  const toastShadowRoot = useShadowPortal(toast.show);
+  const [ownerOptions, setOwnerOptions] = useState<
+    Array<{ label: string; value: string }>
+  >([]);
+  const [lifecycleOptions, setLifecycleOptions] = useState<
+    Array<{ label: string; value: string }>
+  >([]);
+  const [leadStatusOptions, setLeadStatusOptions] = useState<
+    Array<{ label: string; value: string }>
+  >([]);
+  const [leadSourceOptions, setLeadSourceOptions] = useState<
+    Array<{ label: string; value: string }>
+  >([]);
+  const [connectedOnSourceOptions, setConnectedOnSourceOptions] = useState<
+    Array<{ label: string; value: string }>
+  >([]);
+  const [selectedOwner, setSelectedOwner] = useState<{
+    label: string;
+    value: string;
+  }>({ label: "", value: "" });
+  const [selectedLifecycle, setSelectedLifecycle] = useState<{
+    label: string;
+    value: string;
+  }>({ label: "", value: "" });
+  const [selectedLeadStatus, setSelectedLeadStatus] = useState<{
+    label: string;
+    value: string;
+  }>({ label: "", value: "" });
+  const [selectedLeadSource, setSelectedLeadSource] = useState<{
+    label: string;
+    value: string;
+  }>({ label: "", value: "" });
+  const [selectedConnectedOnSource, setSelectedConnectedOnSource] = useState<{
+    label: string;
+    value: string;
+  }>({ label: "", value: "" });
+
+  const [initialCrmState, setInitialCrmState] =
+    useState<CrmInitialState | null>(null);
+
   const ownerRef = useRef<HTMLDivElement>(null);
   const lifecycleRef = useRef<HTMLDivElement>(null);
+  const leadStatusRef = useRef<HTMLDivElement>(null);
+  const leadSourceRef = useRef<HTMLDivElement>(null);
+  const connectedOnSourceRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Load notes count from backend on mount
   useEffect(() => {
     const loadNotesCount = async () => {
       try {
@@ -100,7 +153,6 @@ export default function SyncedProfileView({
 
     loadNotesCount();
 
-    // Listen for storage changes to update count
     const handleStorageChange = (changes: any) => {
       if (changes[`notes_${username}`]) {
         const notes = (changes[`notes_${username}`].newValue as any[]) || [];
@@ -112,10 +164,14 @@ export default function SyncedProfileView({
     return () => chrome.storage.onChanged.removeListener(handleStorageChange);
   }, [username]);
 
-  // Load tasks count
   useEffect(() => {
     const loadTasksCount = async () => {
-      if (!hubspotContactId) return;
+      if (!hubspotContactId) {
+        // No contact => no tasks, but stop showing spinner
+        setTasksCount(0);
+        setTasksCountLoading(false);
+        return;
+      }
 
       setTasksCountLoading(true);
       try {
@@ -124,6 +180,8 @@ export default function SyncedProfileView({
         setTasksCount(tasks.length);
       } catch (err) {
         console.error("Failed to load tasks count:", err);
+        // On error, still stop the spinner and show 0
+        setTasksCount(0);
       } finally {
         setTasksCountLoading(false);
       }
@@ -152,16 +210,21 @@ export default function SyncedProfileView({
     };
   }, []);
 
-  // Fetch property options (owners, lifecycle stages) from HubSpot
   useEffect(() => {
     const fetchPropertyOptions = async () => {
       try {
         const response = await hubspotApi.getPropertyOptions();
         const owners = response.data.owners || [];
         const lifecycles = response.data.lifecycleStages || [];
+        const leadStatuses = response.data.leadStatuses || [];
+        const leadSources = response.data.leadSources || [];
+        const connectedOnSources = response.data.connectedOnSources || [];
 
         setOwnerOptions(owners);
         setLifecycleOptions(lifecycles);
+        setLeadStatusOptions(leadStatuses);
+        setLeadSourceOptions(leadSources);
+        setConnectedOnSourceOptions(connectedOnSources);
 
         const defaultOwner = hubspotOwnerId
           ? owners.find((o: any) => o.value === hubspotOwnerId)
@@ -170,17 +233,54 @@ export default function SyncedProfileView({
             );
 
         const defaultLifecycle = lifecycles.find(
-          (l: any) => l.label === (lifecycle || response.data.lifecycle),
+          (l: any) => l.label === lifecycle || l.value === lifecycle,
         ) || { label: "Choose one", value: "" };
 
+        const defaultLeadStatus = leadStatuses.find(
+          (l: any) => l.label === leadStatus || l.value === leadStatus,
+        ) || { label: "Choose one", value: "" };
+
+        const defaultLeadSource = leadSources.find(
+          (l: any) => l.label === leadSource || l.value === leadSource,
+        ) || { label: "Choose one", value: "" };
+
+        const defaultConnectedOnSource = connectedOnSources.find(
+          (c: any) =>
+            c.label === connectedOnSource || c.value === connectedOnSource,
+        ) || { label: "Choose one", value: "" };
+
+        const initialEmail = response.data.email || email;
+        const initialMobile = phone || response.data.mobile || "";
+
         setSelectedOwner(defaultOwner);
+        setLifecycleOptions(lifecycles);
+        setLeadStatusOptions(leadStatuses);
+        setLeadSourceOptions(leadSources);
+        setConnectedOnSourceOptions(connectedOnSources);
+
         setSelectedLifecycle(defaultLifecycle);
-        setEditableEmail(response.data.email || email);
-        setEditableMobile(phone || response.data.mobile || "");
+        setSelectedLeadStatus(defaultLeadStatus);
+        setSelectedLeadSource(defaultLeadSource);
+        setSelectedConnectedOnSource(defaultConnectedOnSource);
+        setEditableEmail(initialEmail);
+        setEditableMobile(initialMobile);
+
+        setInitialCrmState({
+          ownerId: defaultOwner?.value || "",
+          lifecycle: defaultLifecycle.value,
+          leadStatus: defaultLeadStatus.value,
+          leadSource: defaultLeadSource.value,
+          connectedOnSource: defaultConnectedOnSource.value,
+          email: initialEmail,
+          mobile: initialMobile,
+        });
       } catch (err) {
         console.error("Failed to fetch property options:", err);
         setOwnerOptions([]);
         setLifecycleOptions([]);
+        setLeadStatusOptions([]);
+        setLeadSourceOptions([]);
+        setConnectedOnSourceOptions([]);
         setSelectedOwner({
           label: ownerName ? ownerName : "Choose one",
           value: "",
@@ -189,14 +289,24 @@ export default function SyncedProfileView({
           label: lifecycle ? lifecycle : "Choose one",
           value: "",
         });
+        setSelectedLeadStatus({ label: "Choose one", value: "" });
+        setSelectedLeadSource({ label: "Choose one", value: "" });
+        setSelectedConnectedOnSource({ label: "Choose one", value: "" });
         setEditableMobile(phone || "");
       }
     };
 
     fetchPropertyOptions();
-  }, [email, ownerName, lifecycle, phone]);
+  }, [
+    email,
+    ownerName,
+    lifecycle,
+    phone,
+    leadStatus,
+    leadSource,
+    connectedOnSource,
+  ]);
 
-  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -213,6 +323,27 @@ export default function SyncedProfileView({
         setShowLifecycleDropdown(false);
         setLifecycleSearch("");
       }
+      if (
+        leadStatusRef.current &&
+        !leadStatusRef.current.contains(event.target as Node)
+      ) {
+        setShowLeadStatusDropdown(false);
+        setLeadStatusSearch("");
+      }
+      if (
+        leadSourceRef.current &&
+        !leadSourceRef.current.contains(event.target as Node)
+      ) {
+        setShowLeadSourceDropdown(false);
+        setLeadSourceSearch("");
+      }
+      if (
+        connectedOnSourceRef.current &&
+        !connectedOnSourceRef.current.contains(event.target as Node)
+      ) {
+        setShowConnectedOnSourceDropdown(false);
+        setConnectedOnSourceSearch("");
+      }
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setShowMenu(false);
       }
@@ -222,10 +353,14 @@ export default function SyncedProfileView({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Load notes count from backend
   useEffect(() => {
     const loadNotesCount = async () => {
-      if (!hubspotContactId) return;
+      if (!hubspotContactId) {
+        // No contact => no notes, but stop showing spinner
+        setNotesCount(0);
+        setNotesCountLoading(false);
+        return;
+      }
 
       setNotesCountLoading(true);
       try {
@@ -234,6 +369,8 @@ export default function SyncedProfileView({
         setNotesCount(notes.length);
       } catch (err) {
         console.error("Failed to load notes count:", err);
+        // On error, still stop the spinner and show 0
+        setNotesCount(0);
       } finally {
         setNotesCountLoading(false);
       }
@@ -242,8 +379,32 @@ export default function SyncedProfileView({
     loadNotesCount();
   }, [hubspotContactId]);
 
-  // Update CRM with modified contact fields
+  const hasCrmChanges =
+    !!initialCrmState &&
+    (selectedOwner.value !== initialCrmState.ownerId ||
+      selectedLifecycle.value !== initialCrmState.lifecycle ||
+      selectedLeadStatus.value !== initialCrmState.leadStatus ||
+      selectedLeadSource.value !== initialCrmState.leadSource ||
+      selectedConnectedOnSource.value !== initialCrmState.connectedOnSource ||
+      editableEmail !== initialCrmState.email ||
+      editableMobile !== initialCrmState.mobile);
+
+  const canUpdateCrm = hasCrmChanges && !updating;
+
   const handleUpdateCRM = async () => {
+    if (!hasCrmChanges) {
+      setToast({
+        show: true,
+        message: "Nothing to update.",
+        type: "error",
+      });
+      setTimeout(
+        () => setToast({ show: false, message: "", type: "error" }),
+        3000,
+      );
+      return;
+    }
+
     setUpdating(true);
     try {
       const payload = {
@@ -252,6 +413,9 @@ export default function SyncedProfileView({
         phone: editableMobile,
         owner: selectedOwner.value,
         lifecycle: selectedLifecycle.value,
+        leadStatus: selectedLeadStatus.value,
+        leadSource: selectedLeadSource.value,
+        connectedOnSource: selectedConnectedOnSource.value,
         company: companyName,
       };
 
@@ -262,13 +426,27 @@ export default function SyncedProfileView({
         type: "success",
       });
       setShowMenu(false);
+      setInitialCrmState({
+        ownerId: selectedOwner.value,
+        lifecycle: selectedLifecycle.value,
+        leadStatus: selectedLeadStatus.value,
+        leadSource: selectedLeadSource.value,
+        connectedOnSource: selectedConnectedOnSource.value,
+        email: editableEmail,
+        mobile: editableMobile,
+      });
+
       setTimeout(
         () => setToast({ show: false, message: "", type: "success" }),
         3000,
       );
     } catch (err) {
       console.error("Failed to update CRM:", err);
-      setToast({ show: true, message: "Failed to update CRM", type: "error" });
+      setToast({
+        show: true,
+        message: "Failed to update CRM",
+        type: "error",
+      });
       setTimeout(
         () => setToast({ show: false, message: "", type: "error" }),
         3000,
@@ -277,14 +455,24 @@ export default function SyncedProfileView({
       setUpdating(false);
     }
   };
-
-  // Filter dropdown options based on search input
   const filteredOwners = ownerOptions.filter((option) =>
     option.label.toLowerCase().includes(ownerSearch.toLowerCase()),
   );
 
   const filteredLifecycles = lifecycleOptions.filter((option) =>
     option.label.toLowerCase().includes(lifecycleSearch.toLowerCase()),
+  );
+
+  const filteredLeadStatuses = leadStatusOptions.filter((option) =>
+    option.label.toLowerCase().includes(leadStatusSearch.toLowerCase()),
+  );
+
+  const filteredLeadSources = leadSourceOptions.filter((option) =>
+    option.label.toLowerCase().includes(leadSourceSearch.toLowerCase()),
+  );
+
+  const filteredConnectedOnSources = connectedOnSourceOptions.filter((option) =>
+    option.label.toLowerCase().includes(connectedOnSourceSearch.toLowerCase()),
   );
 
   return (
@@ -346,26 +534,31 @@ export default function SyncedProfileView({
               }}
             >
               <div
-                onClick={handleUpdateCRM}
+                onClick={() => {
+                  if (updating) return;
+                  // Allow click even when visually disabled so we can show the "Nothing to update" toast
+                  handleUpdateCRM();
+                }}
                 style={{
                   padding: "12px 16px",
-                  cursor: updating ? "not-allowed" : "pointer",
+                  cursor: canUpdateCrm ? "pointer" : "not-allowed",
                   fontSize: "14px",
                   color: colors.text,
                   display: "flex",
                   alignItems: "center",
                   gap: "10px",
-                  opacity: updating ? 0.5 : 1,
+                  opacity: canUpdateCrm ? 1 : 0.5,
                   transition: "background 0.15s",
                   fontWeight: 500,
                 }}
-                onMouseEnter={(e) =>
-                  !updating &&
-                  (e.currentTarget.style.background = colors.bgSecondary)
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.background = "transparent")
-                }
+                onMouseEnter={(e) => {
+                  if (canUpdateCrm) {
+                    e.currentTarget.style.background = colors.bgSecondary;
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
               >
                 <svg
                   width="16"
@@ -399,21 +592,17 @@ export default function SyncedProfileView({
           >
             {contactName}
           </h2>
-          <p
-            style={{ fontSize: "13px", color: colors.textSecondary, margin: 0 }}
-          >
-            Last CRM activity just now
-          </p>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {/* Owner */}
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: "8px",
-                width: "80px",
+                width: "110px",
               }}
             >
               <svg
@@ -428,7 +617,13 @@ export default function SyncedProfileView({
                   fill={colors.textSecondary}
                 />
               </svg>
-              <span style={{ fontSize: "13px", color: colors.textSecondary }}>
+              <span
+                style={{
+                  fontSize: "13px",
+                  color: colors.textSecondary,
+                  whiteSpace: "nowrap",
+                }}
+              >
                 Owner
               </span>
             </div>
@@ -529,13 +724,439 @@ export default function SyncedProfileView({
             </div>
           </div>
 
+          {/* Lead Status */}
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: "8px",
-                width: "80px",
+                width: "110px",
+              }}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <circle
+                  cx="8"
+                  cy="8"
+                  r="6"
+                  stroke={colors.textSecondary}
+                  strokeWidth="2"
+                  fill="none"
+                />
+                <circle cx="8" cy="8" r="3" fill={colors.textSecondary} />
+              </svg>
+              <span
+                style={{
+                  fontSize: "13px",
+                  color: colors.textSecondary,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Lead Status
+              </span>
+            </div>
+            <div ref={leadStatusRef} style={{ position: "relative", flex: 1 }}>
+              <div
+                onClick={() =>
+                  setShowLeadStatusDropdown(!showLeadStatusDropdown)
+                }
+                style={{
+                  fontSize: "14px",
+                  color: colors.link,
+                  cursor: "pointer",
+                  padding: "4px 0",
+                  fontWeight: 500,
+                }}
+              >
+                {selectedLeadStatus.label}
+              </div>
+              {showLeadStatusDropdown && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    background: colors.bg,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: "6px",
+                    boxShadow: isDark
+                      ? "0 4px 12px rgba(0,0,0,0.5)"
+                      : "0 4px 12px rgba(0,0,0,0.15)",
+                    width: "220px",
+                    maxHeight: "200px",
+                    overflow: "auto",
+                    zIndex: 1000,
+                    marginTop: "4px",
+                  }}
+                >
+                  <input
+                    type="text"
+                    placeholder="Choose one..."
+                    value={leadStatusSearch}
+                    onChange={(e) => setLeadStatusSearch(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      border: "none",
+                      borderBottom: `1px solid ${colors.border}`,
+                      outline: "none",
+                      fontSize: "14px",
+                      boxSizing: "border-box",
+                      background: colors.bg,
+                      color: colors.text,
+                    }}
+                  />
+                  {filteredLeadStatuses.map((option) => (
+                    <div
+                      key={option.value}
+                      onClick={() => {
+                        setSelectedLeadStatus(option);
+                        setShowLeadStatusDropdown(false);
+                        setLeadStatusSearch("");
+                      }}
+                      style={{
+                        padding: "10px 12px",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        color: colors.text,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        transition: "background 0.15s",
+                      }}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background = colors.bgSecondary)
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.background = "transparent")
+                      }
+                    >
+                      <span
+                        style={{
+                          color:
+                            option.value === selectedLeadStatus.value
+                              ? colors.link
+                              : colors.text,
+                          fontWeight:
+                            option.value === selectedLeadStatus.value
+                              ? 500
+                              : 400,
+                        }}
+                      >
+                        {option.label}
+                      </span>
+                      {option.value === selectedLeadStatus.value && (
+                        <span style={{ color: colors.link, fontSize: "16px" }}>
+                          ✓
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Lead Source */}
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                width: "110px",
+              }}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path d="M8 2L3 6l5 4 5-4-5-4z" fill={colors.textSecondary} />
+                <path
+                  d="M3 7v5l5 2 5-2V7"
+                  stroke={colors.textSecondary}
+                  strokeWidth="1.5"
+                  fill="none"
+                />
+              </svg>
+              <span
+                style={{
+                  fontSize: "13px",
+                  color: colors.textSecondary,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Lead Source
+              </span>
+            </div>
+            <div ref={leadSourceRef} style={{ position: "relative", flex: 1 }}>
+              <div
+                onClick={() =>
+                  setShowLeadSourceDropdown(!showLeadSourceDropdown)
+                }
+                style={{
+                  fontSize: "14px",
+                  color: colors.link,
+                  cursor: "pointer",
+                  padding: "4px 0",
+                  fontWeight: 500,
+                }}
+              >
+                {selectedLeadSource.label}
+              </div>
+              {showLeadSourceDropdown && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    background: colors.bg,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: "6px",
+                    boxShadow: isDark
+                      ? "0 4px 12px rgba(0,0,0,0.5)"
+                      : "0 4px 12px rgba(0,0,0,0.15)",
+                    width: "220px",
+                    maxHeight: "200px",
+                    overflow: "auto",
+                    zIndex: 1000,
+                    marginTop: "4px",
+                  }}
+                >
+                  <input
+                    type="text"
+                    placeholder="Choose one..."
+                    value={leadSourceSearch}
+                    onChange={(e) => setLeadSourceSearch(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      border: "none",
+                      borderBottom: `1px solid ${colors.border}`,
+                      outline: "none",
+                      fontSize: "14px",
+                      boxSizing: "border-box",
+                      background: colors.bg,
+                      color: colors.text,
+                    }}
+                  />
+                  {filteredLeadSources.map((option) => (
+                    <div
+                      key={option.value}
+                      onClick={() => {
+                        setSelectedLeadSource(option);
+                        setShowLeadSourceDropdown(false);
+                        setLeadSourceSearch("");
+                      }}
+                      style={{
+                        padding: "10px 12px",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        color: colors.text,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        transition: "background 0.15s",
+                      }}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background = colors.bgSecondary)
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.background = "transparent")
+                      }
+                    >
+                      <span
+                        style={{
+                          color:
+                            option.value === selectedLeadSource.value
+                              ? colors.link
+                              : colors.text,
+                          fontWeight:
+                            option.value === selectedLeadSource.value
+                              ? 500
+                              : 400,
+                        }}
+                      >
+                        {option.label}
+                      </span>
+                      {option.value === selectedLeadSource.value && (
+                        <span style={{ color: colors.link, fontSize: "16px" }}>
+                          ✓
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Connected On Source */}
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                width: "110px",
+              }}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M5 8h6M8 5v6"
+                  stroke={colors.textSecondary}
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+                <circle
+                  cx="8"
+                  cy="8"
+                  r="6"
+                  stroke={colors.textSecondary}
+                  strokeWidth="1.5"
+                  fill="none"
+                />
+              </svg>
+              <span
+                style={{
+                  fontSize: "13px",
+                  color: colors.textSecondary,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Connected On
+              </span>
+            </div>
+            <div
+              ref={connectedOnSourceRef}
+              style={{ position: "relative", flex: 1 }}
+            >
+              <div
+                onClick={() =>
+                  setShowConnectedOnSourceDropdown(
+                    !showConnectedOnSourceDropdown,
+                  )
+                }
+                style={{
+                  fontSize: "14px",
+                  color: colors.link,
+                  cursor: "pointer",
+                  padding: "4px 0",
+                  fontWeight: 500,
+                }}
+              >
+                {selectedConnectedOnSource.label}
+              </div>
+              {showConnectedOnSourceDropdown && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    background: colors.bg,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: "6px",
+                    boxShadow: isDark
+                      ? "0 4px 12px rgba(0,0,0,0.5)"
+                      : "0 4px 12px rgba(0,0,0,0.15)",
+                    width: "220px",
+                    maxHeight: "200px",
+                    overflow: "auto",
+                    zIndex: 1000,
+                    marginTop: "4px",
+                  }}
+                >
+                  <input
+                    type="text"
+                    placeholder="Choose one..."
+                    value={connectedOnSourceSearch}
+                    onChange={(e) => setConnectedOnSourceSearch(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      border: "none",
+                      borderBottom: `1px solid ${colors.border}`,
+                      outline: "none",
+                      fontSize: "14px",
+                      boxSizing: "border-box",
+                      background: colors.bg,
+                      color: colors.text,
+                    }}
+                  />
+                  {filteredConnectedOnSources.map((option) => (
+                    <div
+                      key={option.value}
+                      onClick={() => {
+                        setSelectedConnectedOnSource(option);
+                        setShowConnectedOnSourceDropdown(false);
+                        setConnectedOnSourceSearch("");
+                      }}
+                      style={{
+                        padding: "10px 12px",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        color: colors.text,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        transition: "background 0.15s",
+                      }}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background = colors.bgSecondary)
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.background = "transparent")
+                      }
+                    >
+                      <span
+                        style={{
+                          color:
+                            option.value === selectedConnectedOnSource.value
+                              ? colors.link
+                              : colors.text,
+                          fontWeight:
+                            option.value === selectedConnectedOnSource.value
+                              ? 500
+                              : 400,
+                        }}
+                      >
+                        {option.label}
+                      </span>
+                      {option.value === selectedConnectedOnSource.value && (
+                        <span style={{ color: colors.link, fontSize: "16px" }}>
+                          ✓
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Lifecycle */}
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                width: "110px",
               }}
             >
               <svg
@@ -554,7 +1175,13 @@ export default function SyncedProfileView({
                   fill="none"
                 />
               </svg>
-              <span style={{ fontSize: "13px", color: colors.textSecondary }}>
+              <span
+                style={{
+                  fontSize: "13px",
+                  color: colors.textSecondary,
+                  whiteSpace: "nowrap",
+                }}
+              >
                 Lifecycle
               </span>
             </div>
@@ -658,13 +1285,14 @@ export default function SyncedProfileView({
             </div>
           </div>
 
+          {/* Company */}
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: "8px",
-                width: "80px",
+                width: "110px",
               }}
             >
               <svg
@@ -680,7 +1308,13 @@ export default function SyncedProfileView({
                 />
                 <path d="M4 6h4v4H4V6z" fill={colors.textSecondary} />
               </svg>
-              <span style={{ fontSize: "13px", color: colors.textSecondary }}>
+              <span
+                style={{
+                  fontSize: "13px",
+                  color: colors.textSecondary,
+                  whiteSpace: "nowrap",
+                }}
+              >
                 Company
               </span>
             </div>
@@ -689,13 +1323,14 @@ export default function SyncedProfileView({
             </span>
           </div>
 
+          {/* Email */}
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: "8px",
-                width: "80px",
+                width: "110px",
               }}
             >
               <svg
@@ -710,7 +1345,13 @@ export default function SyncedProfileView({
                   fill={colors.textSecondary}
                 />
               </svg>
-              <span style={{ fontSize: "13px", color: colors.textSecondary }}>
+              <span
+                style={{
+                  fontSize: "13px",
+                  color: colors.textSecondary,
+                  whiteSpace: "nowrap",
+                }}
+              >
                 Email
               </span>
             </div>
@@ -753,13 +1394,14 @@ export default function SyncedProfileView({
             </div>
           </div>
 
+          {/* Mobile */}
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: "8px",
-                width: "80px",
+                width: "110px",
               }}
             >
               <svg
@@ -774,7 +1416,13 @@ export default function SyncedProfileView({
                   fill={colors.textSecondary}
                 />
               </svg>
-              <span style={{ fontSize: "13px", color: colors.textSecondary }}>
+              <span
+                style={{
+                  fontSize: "13px",
+                  color: colors.textSecondary,
+                  whiteSpace: "nowrap",
+                }}
+              >
                 Mobile
               </span>
             </div>
@@ -818,11 +1466,12 @@ export default function SyncedProfileView({
           </div>
         </div>
 
+        {/* Notes and Tasks Buttons */}
         <div
           style={{
             position: "absolute",
-            bottom: "128px",
-            right: "128px",
+            bottom: "90px",
+            right: "90px",
             display: "flex",
             flexDirection: "column",
             gap: "10px",
@@ -1031,50 +1680,54 @@ export default function SyncedProfileView({
         owners={ownerOptions.map((o) => ({ id: o.value, name: o.label }))}
       />
 
-      {toast.show && (
-        <div
-          style={{
-            position: "fixed",
-            top: "20px",
-            right: "20px",
-            background: toast.type === "success" ? "#10b981" : "#ef4444",
-            color: "white",
-            padding: "12px 20px",
-            borderRadius: "8px",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-            fontSize: "14px",
-            fontWeight: 500,
-            zIndex: 10000,
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            animation: "slideIn 0.3s ease-out",
-          }}
-        >
-          {toast.type === "success" ? (
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path
-                d="M16.667 5L7.5 14.167 3.333 10"
-                stroke="white"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          ) : (
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path
-                d="M15 5L5 15M5 5l10 10"
-                stroke="white"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          )}
-          {toast.message}
-        </div>
-      )}
+      {toast.show &&
+        toastShadowRoot &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              top: "20px",
+              right: "20px",
+              background: toast.type === "success" ? "#10b981" : "#ef4444",
+              color: "white",
+              padding: "12px 20px",
+              borderRadius: "8px",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+              fontSize: "14px",
+              fontWeight: 500,
+              zIndex: 2147483647, // above everything
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              animation: "slideIn 0.3s ease-out",
+              pointerEvents: "auto",
+            }}
+          >
+            {toast.type === "success" ? (
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path
+                  d="M16.667 5L7.5 14.167 3.333 10"
+                  stroke="white"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            ) : (
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path
+                  d="M15 5L5 15M5 5l10 10"
+                  stroke="white"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
+            {toast.message}
+          </div>,
+          toastShadowRoot,
+        )}
 
       <style>
         {`

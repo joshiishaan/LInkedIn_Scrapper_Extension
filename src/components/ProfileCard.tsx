@@ -42,6 +42,9 @@ interface SyncedData {
   phone?: string;
   hubspotOwnerId?: string;
   hubspotContactId?: string;
+  leadStatus?: string;
+  leadSource?: string;
+  connectedOnSource?: string;
 }
 
 export default function ProfileCard() {
@@ -180,6 +183,9 @@ export default function ProfileCard() {
           lifecycle: response.data.lifecycleStage || "",
           phone: response.data.phone || "",
           hubspotContactId: response.data.contactId,
+          leadStatus: response.data.leadStatus || "",
+          leadSource: response.data.leadSource || "",
+          connectedOnSource: response.data.connectedOnSource || "",
         });
       } else {
         setSyncedData(null);

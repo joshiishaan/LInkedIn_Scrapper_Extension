@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useTheme } from "../context/ThemeContext";
 import { tasksApi } from "../services/api";
+import { useShadowPortal } from "../hooks/useShadowPortal";
+import { createPortal } from "react-dom";
 
 interface Task {
   id: string;
@@ -55,6 +57,16 @@ export default function TaskFormPanel({
   const [assignedTo, setAssignedTo] = useState("");
   const [comment, setComment] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [showValidation, setShowValidation] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<{
+    taskName?: string;
+    assignedTo?: string;
+    dueDate?: string;
+    time?: string;
+  }>({});
+
+  // Creating Shadow DOM portal to render the form outside of LinkedIn's React tree and avoid CSS conflicts
+  const shadowRoot = useShadowPortal(isOpen);
 
   useEffect(() => {
     if (editingTask) {
@@ -78,6 +90,11 @@ export default function TaskFormPanel({
     setTimeError("");
   }, [editingTask, owners]);
 
+  useEffect(() => {
+    if (!showValidation) return;
+    setValidationErrors(getValidationErrors());
+  }, [taskName, assignedTo, dueDate, time, showValidation]);
+
   const hasChanges = () => {
     if (!editingTask) return true;
     const owner = owners.find((o) => o.name === editingTask.assignedTo);
@@ -92,7 +109,18 @@ export default function TaskFormPanel({
   };
 
   const handleSave = async () => {
-    if (!taskName.trim() || !assignedTo) return;
+    // user clicked primary button; now we show errors if any
+    const errors = getValidationErrors();
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      setShowValidation(true);
+      return;
+    }
+
+    setShowValidation(false);
+    setValidationErrors({});
+
+    if (isSaving) return;
 
     setIsSaving(true);
 
@@ -147,12 +175,44 @@ export default function TaskFormPanel({
       }
     } catch (err) {
       console.error("Failed to save task:", err);
-      setIsSaving(false);
       alert("Failed to save task");
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  if (!isOpen) return null;
+  const getValidationErrors = () => {
+    const errors: {
+      taskName?: string;
+      assignedTo?: string;
+      dueDate?: string;
+      time?: string;
+    } = {};
+
+    if (!taskName.trim()) {
+      errors.taskName = "Task name is required.";
+    }
+
+    if (!assignedTo) {
+      errors.assignedTo = "Assigned to is required.";
+    }
+
+    // If you want date & time to be mandatory:
+    if (!dueDate) {
+      errors.dueDate = "Due date is required.";
+    }
+    if (!time) {
+      errors.time = "Time is required.";
+    }
+
+    return errors;
+  };
+
+  const isFormValid =
+    Object.keys(getValidationErrors()).length === 0 &&
+    (!editingTask || hasChanges());
+
+  if (!isOpen || !shadowRoot) return null;
 
   const inputStyle = {
     width: "100%",
@@ -176,7 +236,7 @@ export default function TaskFormPanel({
     marginBottom: "6px",
   };
 
-  return (
+  return createPortal(
     <div
       style={{
         position: "fixed",
@@ -243,7 +303,7 @@ export default function TaskFormPanel({
       <div style={{ padding: "24px", flex: 1 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
           <div>
-            <label style={labelStyle}>Task name*</label>
+            <label style={labelStyle}>Task name</label>
             <input
               type="text"
               value={taskName}
@@ -251,6 +311,13 @@ export default function TaskFormPanel({
               placeholder="Task title"
               style={inputStyle}
             />
+            {showValidation && validationErrors.taskName && (
+              <div
+                style={{ color: "#ef4444", fontSize: "12px", marginTop: "4px" }}
+              >
+                {validationErrors.taskName}
+              </div>
+            )}
           </div>
 
           <div>
@@ -269,24 +336,6 @@ export default function TaskFormPanel({
               }}
             >
               <span>{contactName}</span>
-              <button
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: "4px",
-                  color: colors.textSecondary,
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path
-                    d="M10 4L4 10M4 4l6 6"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
             </div>
           </div>
 
@@ -302,6 +351,17 @@ export default function TaskFormPanel({
                   colorScheme: isDark ? "dark" : "light",
                 }}
               />
+              {showValidation && validationErrors.dueDate && (
+                <div
+                  style={{
+                    color: "#ef4444",
+                    fontSize: "12px",
+                    marginTop: "4px",
+                  }}
+                >
+                  {validationErrors.dueDate}
+                </div>
+              )}
             </div>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Time</label>
@@ -318,6 +378,17 @@ export default function TaskFormPanel({
                   opacity: !dueDate ? 0.6 : 1,
                 }}
               />
+              {showValidation && validationErrors.time && (
+                <div
+                  style={{
+                    color: "#ef4444",
+                    fontSize: "12px",
+                    marginTop: "4px",
+                  }}
+                >
+                  {validationErrors.time}
+                </div>
+              )}
             </div>
           </div>
 
@@ -387,6 +458,13 @@ export default function TaskFormPanel({
                 </option>
               ))}
             </select>
+            {showValidation && validationErrors.assignedTo && (
+              <div
+                style={{ color: "#ef4444", fontSize: "12px", marginTop: "4px" }}
+              >
+                {validationErrors.assignedTo}
+              </div>
+            )}
           </div>
 
           <div>
@@ -426,14 +504,15 @@ export default function TaskFormPanel({
           style={{
             flex: 1,
             padding: "12px 24px",
-            background: colors.bgSecondary,
-            color: colors.text,
+            background: isSaving ? colors.border : colors.bgSecondary,
+            color: isSaving ? colors.textSecondary : colors.text,
             border: `1px solid ${colors.border}`,
             borderRadius: "8px",
             cursor: isSaving ? "not-allowed" : "pointer",
             fontSize: "14px",
             fontWeight: 600,
             transition: "all 0.2s",
+            opacity: isSaving ? 0.6 : 1,
           }}
           onMouseEnter={(e) => {
             if (!isSaving) {
@@ -450,39 +529,22 @@ export default function TaskFormPanel({
         </button>
         <button
           onClick={handleSave}
-          disabled={
-            !taskName.trim() ||
-            !assignedTo ||
-            isSaving ||
-            !!(editingTask && !hasChanges())
-          }
+          disabled={isSaving}
           style={{
             flex: 1,
             padding: "10px 20px",
             background:
-              taskName.trim() && assignedTo && (!editingTask || hasChanges())
+              isFormValid && !isSaving
                 ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
                 : colors.border,
             color: "white",
             border: "none",
             borderRadius: "6px",
-            cursor:
-              taskName.trim() &&
-              assignedTo &&
-              !timeError &&
-              (!editingTask || hasChanges())
-                ? "pointer"
-                : "not-allowed",
+            cursor: isFormValid && !isSaving ? "pointer" : "not-allowed",
             fontSize: "14px",
             fontWeight: 600,
             transition: "all 0.2s",
-            opacity:
-              taskName.trim() &&
-              assignedTo &&
-              !timeError &&
-              (!editingTask || hasChanges())
-                ? 1
-                : 0.6,
+            opacity: isFormValid && !isSaving ? 1 : 0.6,
           }}
           onMouseEnter={(e) => {
             if (
@@ -511,6 +573,8 @@ export default function TaskFormPanel({
           {isSaving ? "Saving..." : editingTask ? "Save Task" : "Create Task"}
         </button>
       </div>
-    </div>
+      <style>{`* { box-sizing: border-box; }`}</style>
+    </div>,
+    shadowRoot,
   );
 }

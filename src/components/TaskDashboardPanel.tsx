@@ -4,6 +4,7 @@ import { useTheme } from "../context/ThemeContext";
 import TaskCard from "./TaskCard";
 import TaskFormPanel from "./TaskFormPanel";
 import { tasksApi } from "../services/api";
+import { useShadowPortal } from "../hooks/useShadowPortal";
 
 interface Task {
   id: string;
@@ -49,33 +50,17 @@ export default function TaskDashboardPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [showFormPanel, setShowFormPanel] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
+
+  const shadowRoot = useShadowPortal(isOpen);
 
   useEffect(() => {
     if (isOpen && hubspotContactId) {
       loadTasks();
     }
   }, [isOpen, hubspotContactId]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const container = document.createElement("div");
-    container.id = "amazon-q-tasks-panel-root";
-    container.style.cssText =
-      "position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2147483647 !important;";
-    document.body.appendChild(container);
-    setPortalRoot(container);
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = "";
-      container.remove();
-      setPortalRoot(null);
-    };
-  }, [isOpen]);
 
   const loadTasks = async () => {
     if (!hubspotContactId) return;
@@ -93,7 +78,8 @@ export default function TaskDashboardPanel({
   };
 
   const toggleTaskComplete = async (task: Task) => {
-    const newStatus = task.status === "COMPLETED" ? "To do" : "COMPLETED";
+    const isCompleted = task.status.toUpperCase() === "COMPLETED";
+    const newStatus = isCompleted ? "To do" : "COMPLETED";
     const owner = owners.find((o) => o.name === task.assignedTo);
 
     setTasks(
@@ -176,7 +162,7 @@ export default function TaskDashboardPanel({
     setTaskToDelete(null);
   };
 
-  if (!isOpen || !portalRoot) return null;
+  if (!isOpen || !shadowRoot) return null;
 
   const panelContent = (
     <>
@@ -361,6 +347,7 @@ export default function TaskDashboardPanel({
                 Loading tasks...
               </div>
             ) : tasks.length === 0 ? (
+              // Replace lines 367-407 in TaskDashboardPanel.tsx
               <div
                 style={{
                   textAlign: "center",
@@ -369,55 +356,51 @@ export default function TaskDashboardPanel({
                 }}
               >
                 <svg
-                  width="120"
-                  height="120"
-                  viewBox="0 0 120 120"
+                  width="64"
+                  height="64"
+                  viewBox="0 0 64 64"
+                  fill="none"
                   style={{ margin: "0 auto 16px" }}
                 >
                   <rect
-                    x="20"
-                    y="30"
-                    width="40"
-                    height="50"
-                    fill="#e0b3ff"
+                    x="8"
+                    y="8"
+                    width="48"
+                    height="48"
                     rx="4"
+                    stroke={colors.textSecondary}
+                    strokeWidth="2"
+                    fill="none"
+                  />
+                  <path
+                    d="M18 24l6 6 12-12"
+                    stroke={colors.textSecondary}
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   />
                   <line
-                    x1="30"
-                    y1="45"
-                    x2="50"
-                    y2="45"
-                    stroke="#000"
+                    x1="18"
+                    y1="38"
+                    x2="46"
+                    y2="38"
+                    stroke={colors.textSecondary}
                     strokeWidth="2"
+                    strokeLinecap="round"
                   />
                   <line
-                    x1="30"
-                    y1="55"
-                    x2="50"
-                    y2="55"
-                    stroke="#000"
+                    x1="18"
+                    y1="48"
+                    x2="46"
+                    y2="48"
+                    stroke={colors.textSecondary}
                     strokeWidth="2"
+                    strokeLinecap="round"
                   />
-                  <line
-                    x1="30"
-                    y1="65"
-                    x2="45"
-                    y2="65"
-                    stroke="#000"
-                    strokeWidth="2"
-                  />
-                  <ellipse cx="80" cy="40" rx="15" ry="20" fill="#ffb3d9" />
-                  <circle cx="75" cy="35" r="3" fill="#000" />
-                  <circle cx="85" cy="35" r="3" fill="#000" />
-                  <path d="M75 45 Q80 48 85 45" stroke="#000" strokeWidth="2" />
-                  <ellipse cx="80" cy="70" rx="20" ry="10" fill="#ffb3d9" />
-                  <rect x="70" y="70" width="8" height="25" fill="#0a4d4d" />
-                  <rect x="82" y="70" width="8" height="25" fill="#0a4d4d" />
-                  <path d="M65 80 L75 95" stroke="#0a4d4d" strokeWidth="6" />
-                  <path d="M95 80 L85 95" stroke="#0a4d4d" strokeWidth="6" />
                 </svg>
-                <p style={{ fontSize: "16px", margin: "0 0 8px 0" }}>
-                  Free your mind - create a to-do list
+                <p style={{ fontSize: "14px", margin: 0 }}>No tasks yet</p>
+                <p style={{ fontSize: "13px", margin: "8px 0 0 0" }}>
+                  Click "Create new Task" to get started
                 </p>
               </div>
             ) : (
@@ -576,5 +559,11 @@ export default function TaskDashboardPanel({
     </>
   );
 
-  return createPortal(panelContent, portalRoot);
+  return createPortal(
+    <>
+      <style>{`* { box-sizing: border-box; }`}</style>
+      {panelContent}
+    </>,
+    shadowRoot,
+  );
 }
