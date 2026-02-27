@@ -305,6 +305,8 @@ export default function SyncedProfileView({
     leadStatus,
     leadSource,
     connectedOnSource,
+    hubspotContactId,
+    hubspotOwnerId,
   ]);
 
   useEffect(() => {

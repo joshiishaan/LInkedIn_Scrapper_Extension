@@ -309,6 +309,7 @@ export default function ProfileCard() {
         email: finalPayload.contact.email,
         phone: finalPayload.contact.phone,
         hubspotOwnerId: response.data.hubspotOwnerId,
+        hubspotContactId: response.data.contactId,
       });
     } catch (err) {
       console.error("Error:", err);

@@ -145,7 +145,7 @@ export default function NotesPanel({
       } else {
         const response = await notesApi.createNote({
           ...payload,
-          contactId: hubspotContactId,
+          contactId: hubspotContactId!,
         });
         const newNote: Note = {
           id: response.data,
