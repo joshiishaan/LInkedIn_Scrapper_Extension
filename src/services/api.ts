@@ -140,6 +140,61 @@ export const linkedinApi = {
     if (!response.ok) throw new Error("Failed to save data");
     return response.json();
   },
+
+  upsertMessages: async (payload: {
+    conversationKey: string;
+    messages: {
+      text: string;
+      sentAt: string;
+      sender: { name: string; profileUrl: string; distance: string };
+      receiver: { name: string; profileUrl: string; distance: string };
+    }[];
+  }) => {
+    const response = await fetch(`${API_BASE_URL}/hubspot/upsert-messages`, {
+      method: "POST",
+      headers: await getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      console.error("API Error (upsert-messages):", errorText);
+      throw new Error("Failed to upsert messages");
+    }
+    return response.json();
+  },
+
+  // // Check message sync status for a LinkedIn contact profile URL
+  // checkMessages: async (contactProfileUrl: string) => {
+  //   const params = new URLSearchParams({ contactProfileUrl });
+
+  //   console.log("params", params.toString());
+
+  //   const response = await fetch(
+  //     `${API_BASE_URL}/hubspot/check-messages?${params.toString()}`,
+  //     {
+  //       method: "GET",
+  //       headers: await getAuthHeaders(),
+  //     },
+  //   );
+
+  //   if (!response.ok) {
+  //     const errorText = await response.text().catch(() => "");
+  //     console.error("API Error (check-messages):", errorText);
+  //     throw new Error("Failed to check message sync status");
+  //   }
+
+  //   return response.json() as Promise<{
+  //     success: boolean;
+  //     data: {
+  //       contactExists: boolean;
+  //       contactId?: string;
+  //       hasSyncedMessages: boolean;
+  //       latestMessageTimestamp?: string;
+  //       totalMessages: number;
+  //     };
+  //     message: string;
+  //   }>;
+  // },
 };
 
 // Notes API endpoints

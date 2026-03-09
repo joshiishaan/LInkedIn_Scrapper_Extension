@@ -212,19 +212,207 @@ export async function fetchLinkedInCompany(companyId: string) {
 // Extract profile ID from current LinkedIn URL
 export function getProfileIdFromUrl(): string | null {
   const url = window.location.href;
-  const match = url.match(/linkedin\.com\/in\/([^\/\?]+)/);
+  const match = url.match(/linkedin\.com\/in\/([^/?]+)/);
   return match ? match[1] : null;
 }
 
 // Extract company ID from current LinkedIn URL
 export function getCompanyIdFromUrl(): string | null {
   const url = window.location.href;
-  const match = url.match(/linkedin\.com\/company\/([^\/\?]+)/);
+  const match = url.match(/linkedin\.com\/company\/([^/?]+)/);
   return match ? match[1] : null;
 }
 
 // Extract company ID from any LinkedIn company URL
 export function extractCompanyIdFromUrl(url: string): string | null {
-  const match = url.match(/linkedin\.com\/company\/([^\/\?]+)/);
+  const match = url.match(/linkedin\.com\/company\/([^/?]+)/);
   return match ? match[1] : null;
+}
+
+// --- Active Voyager messaging fetch (regular LinkedIn Messenger) ---
+
+// More robust CSRF extraction: support both quoted and unquoted JSESSIONID
+function getCsrfTokenFromCookies(): string {
+  const cookie = document.cookie || "";
+  // Try quoted form first: JSESSIONID="ajax:123..."
+  const quoted = cookie.match(/JSESSIONID="([^"]+)"/);
+  if (quoted?.[1]) return quoted[1];
+
+  // Fallback: unquoted form: JSESSIONID=ajax:123...
+  const unquoted = cookie.match(/JSESSIONID=([^;]+)/);
+  return unquoted?.[1] || "";
+}
+
+/**
+ * Low‑level helper that mirrors HubLead's `l(url)`:
+ * - Reads CSRF token once
+ * - Sends LinkedIn-ish headers
+ * - Uses credentials: "include"
+ */
+async function fetchVoyagerMessaging(
+  url: string,
+  accept: string = "application/graphql",
+  extraHeaders?: Record<string, string> | null,
+): Promise<any> {
+  const csrf = getCsrfTokenFromCookies();
+  if (!csrf) {
+    throw new Error(
+      "Missing CSRF token (JSESSIONID); user must be logged in to LinkedIn.",
+    );
+  }
+
+  const headers: Record<string, string> = {
+    ...(extraHeaders || {}),
+    accept,
+    "accept-language": "en-US,en;q=0.9",
+    "cache-control": "no-cache",
+    "csrf-token": csrf,
+    pragma: "no-cache",
+    "x-li-lang": extraHeaders?.["x-li-lang"] || "en_US",
+    "x-restli-protocol-version": "2.0.0",
+  };
+
+  const response = await fetch(url, {
+    method: "GET",
+    mode: "cors",
+    credentials: "include",
+    headers,
+  });
+
+  if (!response.ok) {
+    // Surface 429 separately if you want to rate‑limit
+    if (response.status === 429) {
+      throw new Error(`${url} too many requests`);
+    }
+    const text = await response.text();
+    throw new Error(
+      `Voyager messaging request failed (${response.status}): ${text}`,
+    );
+  }
+
+  return response.json();
+}
+
+// Known LinkedIn messengerMessages GraphQL queryIds (same pattern as HubLead)
+const MESSENGER_QUERY_IDS = [
+  "messengerMessages.5846eeb71c981f11e0134cb6626cc314", // current working id you observed
+  "messengerMessages.8d15783c080e392b337ba57fc576ad21",
+  "messengerMessages.da3e025fbcdc19337264a6881f13c22a",
+];
+
+export type MessengerMessage = any;
+
+/**
+ * Active fetch: given profileUrnNumeric + threadId, build the same variables string
+ * HubLead uses and call the voyagerMessagingGraphQL endpoint.
+ *
+ * variables = (conversationUrn:urn:li:msg_conversation:(urn:li:fsd_profile:<profileUrn>,2-<threadId>))
+ */
+export async function fetchMessengerConversationMessages(
+  profileUrnNumeric: string,
+  threadId: string,
+): Promise<MessengerMessage[]> {
+  console.log("[Scrapper Debug] fetchMessengerConversationMessages", {
+    profileUrnNumeric,
+    threadId,
+  });
+
+  const baseApi = "https://www.linkedin.com/voyager/api";
+  const variables =
+    `conversationUrn:urn` +
+    encodeURIComponent(
+      `:li:msg_conversation:(urn:li:fsd_profile:${profileUrnNumeric},2-${threadId})`,
+    )
+      .replace(/\(/g, "%28")
+      .replace(/\)/g, "%29");
+
+  let lastError: unknown = null;
+
+  for (const queryId of MESSENGER_QUERY_IDS) {
+    const url = `${baseApi}/voyagerMessagingGraphQL/graphql?queryId=${encodeURIComponent(
+      queryId,
+    )}&variables=(${variables})`;
+
+    try {
+      const data = await fetchVoyagerMessaging(url);
+      const elements: MessengerMessage[] =
+        data?.data?.messengerMessagesBySyncToken?.elements ?? [];
+
+      if (elements && elements.length > 0) {
+        return elements;
+      }
+    } catch (err: any) {
+      lastError = err;
+      if (err instanceof Error && err.message.includes("403")) {
+        console.warn(
+          `[Scrapper Debug] 403 for queryId ${queryId}, trying next queryId`,
+        );
+        continue;
+      }
+      console.error(
+        `[Scrapper Debug] Error fetching messages with queryId ${queryId}:`,
+        err,
+      );
+      throw new Error(`Failed to fetch messages: ${err?.message || err}`);
+    }
+  }
+
+  throw lastError ?? new Error("All messengerMessages queryIds failed.");
+}
+
+/**
+ * Active fetch variant: reuse the exact variables string from an intercepted request.
+ * This is closest to what the browser itself did, and works even if the URN format changes.
+ */
+export async function fetchMessengerConversationMessagesWithVariables(
+  variablesString: string,
+  baseHeaders?: Record<string, string> | null,
+): Promise<MessengerMessage[]> {
+  console.log(
+    "[Scrapper Debug] fetchMessengerConversationMessagesWithVariables",
+    {
+      variablesString,
+      hasBaseHeaders: !!baseHeaders,
+    },
+  );
+
+  const baseApi = "https://www.linkedin.com/voyager/api";
+  const encodedVariables = encodeURIComponent(variablesString.trim());
+
+  let lastError: unknown = null;
+
+  for (const queryId of MESSENGER_QUERY_IDS) {
+    const url = `${baseApi}/voyagerMessagingGraphQL/graphql?queryId=${encodeURIComponent(
+      queryId,
+    )}&variables=${encodedVariables}`;
+
+    try {
+      const data = await fetchVoyagerMessaging(
+        url,
+        "application/graphql",
+        baseHeaders,
+      );
+      const elements: MessengerMessage[] =
+        data?.data?.messengerMessagesBySyncToken?.elements ?? [];
+
+      if (elements && elements.length > 0) {
+        return elements;
+      }
+    } catch (err: any) {
+      lastError = err;
+      if (err instanceof Error && err.message.includes("403")) {
+        console.warn(
+          `[Scrapper Debug] 403 for queryId ${queryId}, trying next queryId`,
+        );
+        continue;
+      }
+      console.error(
+        `[Scrapper Debug] Error fetching messages with queryId ${queryId}:`,
+        err,
+      );
+      throw new Error(`Failed to fetch messages: ${err?.message || err}`);
+    }
+  }
+
+  throw lastError ?? new Error("All messengerMessages queryIds failed.");
 }

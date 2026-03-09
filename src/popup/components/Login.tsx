@@ -17,6 +17,7 @@ export default function Login({ onAuth, onSignup, onReset }: Props) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   // Handle login form submission
   const handleSubmit = async (e: React.FormEvent) => {
@@ -45,13 +46,23 @@ export default function Login({ onAuth, onSignup, onReset }: Props) {
           onChange={(e) => setEmail(e.target.value)}
           required
         />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
+        <div className="password-field">
+          <input
+            type={showPassword ? "text" : "password"}
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <button
+            type="button"
+            className="toggle-password"
+            onClick={() => setShowPassword((prev) => !prev)}
+            aria-label={showPassword ? "Hide password" : "Show password"}
+          >
+            {showPassword ? "Hide" : "Show"}
+          </button>
+        </div>
         {error && <div className="error">{error}</div>}
         <button type="submit" disabled={loading}>
           {loading ? "Logging in..." : "Login"}
