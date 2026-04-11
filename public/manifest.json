@@ -4,9 +4,18 @@
   "version": "1.0.0",
   "permissions": ["storage", "tabs", "cookies", "scripting"],
   "host_permissions": ["https://linkedin.com/*", "https://*.linkedin.com/*"],
+  "icons": {
+    "16": "images/icon.png",
+    "48": "images/icon.png",
+    "128": "images/icon.png"
+  },
   "action": {
     "default_popup": "/public/popup.html",
-    "default_icon": "icon.png"
+    "default_icon": {
+      "16": "images/icon.png",
+      "48": "images/icon.png",
+      "128": "images/icon.png"
+    }
   },
   "background": {
     "service_worker": "background.js"
@@ -27,7 +36,7 @@
   "web_accessible_resources": [
     {
       "matches": ["<all_urls>"],
-      "resources": ["assets/*"]
+      "resources": ["assets/*", "images/*"]
     }
   ]
 }

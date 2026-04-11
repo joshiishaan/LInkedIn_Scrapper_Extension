@@ -56,10 +56,11 @@
     responseBody,
     status,
     requestHeaders,
+    type,
   }) {
     try {
       const detail = {
-        type: "HL_INTERNAL_LINKEDIN_MESSAGES",
+        type: type || "HL_INTERNAL_LINKEDIN_MESSAGES",
         pageUrl: window.location.href,
         callUrl: url,
         method,
@@ -95,6 +96,20 @@
     }
   }
 
+  function isProfileDataRequest(url) {
+    try {
+      const u = new URL(url);
+      return u.pathname.includes("/voyager/api/identity/dash/profiles");
+    } catch { return false; }
+  }
+
+  function isCompanyDataRequest(url) {
+    try {
+      const u = new URL(url);
+      return u.pathname.includes("/voyager/api/organization/companies");
+    } catch { return false; }
+  }
+
   // --- fetch hook ---
   if (typeof window.fetch === "function" && !window.__hlFetchWrapped) {
     window.__hlFetchWrapped = true;
@@ -106,7 +121,10 @@
       const method = (init.method || "GET").toUpperCase();
       const url = typeof input === "string" ? input : input.url;
 
-      const shouldWatch = isMessengerMessagesRequest(url);
+      const isMessaging = isMessengerMessagesRequest(url);
+      const isProfile   = isProfileDataRequest(url);
+      const isCompany   = isCompanyDataRequest(url);
+      const shouldWatch = isMessaging || isProfile || isCompany;
       let requestBody = init.body;
 
       const response = await originalFetch.apply(this, args);
@@ -125,6 +143,12 @@
           parsed = text;
         }
 
+        const type = isMessaging
+          ? "HL_INTERNAL_LINKEDIN_MESSAGES"
+          : isProfile
+            ? "HL_INTERNAL_LINKEDIN_PROFILE"
+            : "HL_INTERNAL_LINKEDIN_COMPANY";
+
         emitHlNetworkCall({
           url,
           method,
@@ -132,6 +156,7 @@
           responseBody: parsed,
           status: response.status,
           requestHeaders: pickLinkedInHeaders(init.headers),
+          type,
         });
       } catch (err) {
         console.warn("[HL interceptor] fetch hook error:", err);
@@ -163,7 +188,10 @@
       xhr.send = function (body) {
         requestBody = body;
         xhr.addEventListener("loadend", function () {
-          if (!isMessengerMessagesRequest(requestUrl)) return;
+          const isMessaging = isMessengerMessagesRequest(requestUrl);
+          const isProfile   = isProfileDataRequest(requestUrl);
+          const isCompany   = isCompanyDataRequest(requestUrl);
+          if (!isMessaging && !isProfile && !isCompany) return;
 
           let responseBody = xhr.response;
           try {
@@ -174,12 +202,19 @@
             // keep as text
           }
 
+          const type = isMessaging
+            ? "HL_INTERNAL_LINKEDIN_MESSAGES"
+            : isProfile
+              ? "HL_INTERNAL_LINKEDIN_PROFILE"
+              : "HL_INTERNAL_LINKEDIN_COMPANY";
+
           emitHlNetworkCall({
             url: requestUrl,
             method,
             requestBody,
             responseBody,
             status: xhr.status,
+            type,
           });
         });
 

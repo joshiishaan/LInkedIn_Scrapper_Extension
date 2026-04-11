@@ -10,6 +10,14 @@ import ReactDOM from "react-dom/client";
 import { ThemeProvider } from "../context/ThemeContext";
 import ProfileCard from "../components/ProfileCard";
 import { MessageSyncButton } from "../components/MessageSyncButton";
+import Sidebar from "../components/Sidebar";
+import { useLinkedInProfileInterceptor } from "../hooks/useLinkedInProfileInterceptor";
+
+// eslint-disable-next-line react-refresh/only-export-components
+function HubLeadRoot() {
+  useLinkedInProfileInterceptor();
+  return null;
+}
 
 (function () {
   let currentUrl = location.href;
@@ -18,6 +26,7 @@ import { MessageSyncButton } from "../components/MessageSyncButton";
   let containerWatcher: MutationObserver | null = null;
   let isInjecting = false;
   let healthCheckTimer: ReturnType<typeof setTimeout> | null = null;
+  let sidebarRoot: ReactDOM.Root | null = null;
 
   // --- Shared React root renderers ---
 
@@ -38,6 +47,17 @@ import { MessageSyncButton } from "../components/MessageSyncButton";
     messageRoot.render(
       <ThemeProvider>
         <MessageSyncButton />
+      </ThemeProvider>,
+    );
+  }
+
+  function renderSidebar(container: HTMLElement, showFetchProfile: boolean) {
+    if (!sidebarRoot) {
+      sidebarRoot = ReactDOM.createRoot(container);
+    }
+    sidebarRoot.render(
+      <ThemeProvider>
+        <Sidebar showFetchProfile={showFetchProfile} />
       </ThemeProvider>,
     );
   }
@@ -231,6 +251,18 @@ import { MessageSyncButton } from "../components/MessageSyncButton";
     }
   }
 
+  function initSidebarInjection() {
+    const showFetchProfile = window.location.href.includes("/messaging");
+    let container = document.getElementById("linkedin-extension-sidebar");
+
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "linkedin-extension-sidebar";
+      document.body.appendChild(container);
+    }
+    renderSidebar(container, showFetchProfile);
+  }
+
   // --- SPA URL watcher ---
 
   const urlObserver = new MutationObserver(() => {
@@ -274,6 +306,7 @@ import { MessageSyncButton } from "../components/MessageSyncButton";
       // Re-run injections for the new page
       initProfileInjection();
       void initMessagingInjection();
+      initSidebarInjection();
     } else if (window.location.href.includes("/messaging")) {
       // Fallback: 500ms after DOM settles, re-inject if container is missing
       if (healthCheckTimer) clearTimeout(healthCheckTimer);
@@ -299,7 +332,19 @@ import { MessageSyncButton } from "../components/MessageSyncButton";
 
   urlObserver.observe(document.body, { childList: true, subtree: true });
 
+  // Mount always-on interceptor listener (singleton, never removed)
+  (function mountHubLeadRoot() {
+    let container = document.getElementById("linkedin-extension-root");
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "linkedin-extension-root";
+      document.body.appendChild(container);
+      ReactDOM.createRoot(container).render(<HubLeadRoot />);
+    }
+  })();
+
   // Initial run
   initProfileInjection();
   void initMessagingInjection();
+  initSidebarInjection();
 })();

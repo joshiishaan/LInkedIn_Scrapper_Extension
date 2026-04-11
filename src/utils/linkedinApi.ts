@@ -10,7 +10,7 @@ function getCsrfToken(): string {
 }
 
 // Parse LinkedIn profile API response into structured data
-function parseProfileData(response: any) {
+export function parseProfileData(response: any) {
   const profile = response.elements?.[0];
 
   if (!profile) {
@@ -80,7 +80,7 @@ function parseProfileData(response: any) {
 }
 
 // Parse LinkedIn company API response into structured data
-function parseCompanyData(response: any) {
+export function parseCompanyData(response: any) {
   const companyUrn = response.data?.["*elements"]?.[0];
   const company = response.included?.find(
     (item: any) =>

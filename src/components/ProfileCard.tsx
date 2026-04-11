@@ -9,10 +9,16 @@ import { useTheme } from "../context/ThemeContext";
 import {
   fetchLinkedInProfile,
   fetchLinkedInCompany,
+  parseProfileData,
+  parseCompanyData,
   getProfileIdFromUrl,
   extractCompanyIdFromUrl,
   fetchLinkedInContactInfo,
 } from "../utils/linkedinApi";
+import {
+  getInterceptedProfile,
+  getInterceptedCompany,
+} from "../hooks/useLinkedInProfileInterceptor";
 import { linkedinApi, hubspotApi } from "../services/api";
 import CompanySelectionModal from "./CompanySelectionModal";
 import SyncedProfileView from "./SyncedProfileView";
@@ -67,6 +73,16 @@ export default function ProfileCard() {
   // Data states
   const [currentCompanies, setCurrentCompanies] = useState<Experience[]>([]);
   const [profileData, setProfileData] = useState<any>(null);
+
+  // Debug toasts — stacked list so multiple can show without overlapping
+  const [debugToasts, setDebugToasts] = useState<{ id: number; message: string }[]>([]);
+  const showDebugToast = (message: string) => {
+    const id = Date.now();
+    setDebugToasts((prev) => [...prev, { id, message }]);
+    setTimeout(() => {
+      setDebugToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 5000);
+  };
 
   // UI states
   const [showModal, setShowModal] = useState(false);
@@ -215,7 +231,26 @@ export default function ProfileCard() {
 
     setLoading(true);
     try {
-      const result = await fetchLinkedInProfile(profileId);
+      // ── 1. Try intercepted profile data ──────────────────────────────────
+      let result: any;
+      const intercepted = getInterceptedProfile(profileId);
+
+      if (intercepted) {
+        console.log("[HubLead] Using intercepted profile data (no Voyager call needed)");
+        result = parseProfileData({ elements: [intercepted.raw] });
+        if (!result?.basicInfo?.firstName) {
+          console.log("[HubLead] Intercepted profile data incomplete — falling back to direct Voyager call");
+          showDebugToast("⚠️ Profile: interceptor cache hit but data incomplete → fallback to API");
+          result = await fetchLinkedInProfile(profileId);
+        } else {
+          showDebugToast("✅ Profile: loaded from interceptor cache (no API call)");
+        }
+      } else {
+        console.log("[HubLead] No intercepted data — falling back to direct Voyager call");
+        showDebugToast("🌐 Profile: no interceptor cache → direct Voyager API call");
+        result = await fetchLinkedInProfile(profileId);
+      }
+
       setProfileData(result);
 
       // Filter for current positions (no end date)
@@ -254,10 +289,28 @@ export default function ProfileCard() {
         throw new Error("Could not extract company ID");
       }
 
-      const [companyData, contactInfo] = await Promise.all([
-        fetchLinkedInCompany(companyId),
-        fetchLinkedInContactInfo(profile.basicInfo.publicIdentifier),
-      ]);
+      // ── Try intercepted company data ──────────────────────────────────────
+      let companyData: any;
+      const interceptedCompany = getInterceptedCompany(companyId);
+
+      if (interceptedCompany) {
+        console.log("[HubLead] Using intercepted company data for:", companyId);
+        try {
+          companyData = parseCompanyData(interceptedCompany.raw);
+          showDebugToast(`✅ Company (${companyId}): loaded from interceptor cache (no API call)`);
+        } catch {
+          console.log("[HubLead] Intercepted company data parse failed — falling back to Voyager call");
+          showDebugToast(`⚠️ Company (${companyId}): interceptor cache hit but parse failed → fallback to API`);
+          companyData = await fetchLinkedInCompany(companyId);
+        }
+      } else {
+        console.log("[HubLead] No intercepted company data — falling back to Voyager call");
+        showDebugToast(`🌐 Company (${companyId}): no interceptor cache → direct Voyager API call`);
+        companyData = await fetchLinkedInCompany(companyId);
+      }
+
+      // Contact info: always direct API (not reliably interceptable)
+      const contactInfo = await fetchLinkedInContactInfo(profile.basicInfo.publicIdentifier);
 
       // Build payload for backend
       const finalPayload = {
@@ -532,6 +585,40 @@ export default function ProfileCard() {
           onClose={() => setShowModal(false)}
         />
       )}
+
+      {/* Debug toasts — stacked, bottom-right, oldest at bottom */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: "24px",
+          right: "24px",
+          zIndex: 2147483647,
+          display: "flex",
+          flexDirection: "column-reverse",
+          gap: "8px",
+          pointerEvents: "none",
+        }}
+      >
+        {debugToasts.map((t) => (
+          <div
+            key={t.id}
+            style={{
+              background: "#1e40af",
+              color: "#fff",
+              padding: "10px 14px",
+              borderRadius: "10px",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+              fontSize: "12px",
+              fontWeight: 600,
+              maxWidth: "340px",
+              lineHeight: "1.4",
+              fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+            }}
+          >
+            [HubLead debug] {t.message}
+          </div>
+        ))}
+      </div>
     </>
   );
 }
