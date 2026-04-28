@@ -5,7 +5,6 @@ import {
 } from "../utils/linkedinApi";
 import { linkedinApi } from "../services/api";
 import {
-  type HlNetworkCallDetail,
   type HlNetworkCallEvent,
   type Party,
   deriveConversationParties,
@@ -42,12 +41,16 @@ export function useLinkedInMessageSync() {
         setIsButtonDisabled(false);
         return;
       } catch (err) {
-        console.error("Active Voyager messaging fetch failed (with variables):", err);
+        console.error(
+          "Active Voyager messaging fetch failed (with variables):",
+          err,
+        );
         return;
       }
     }
 
-    const parsed = parseProfileUrnAndThreadIdFromConversationKey(conversationKey);
+    const parsed =
+      parseProfileUrnAndThreadIdFromConversationKey(conversationKey);
     if (!parsed) return;
 
     try {
@@ -159,12 +162,18 @@ export function useLinkedInMessageSync() {
       recipient = normalizedRecipient;
 
       if (!sender || !recipient) {
-        console.warn("[Scrapper Debug] Cannot sync: missing sender or recipient.", { sender, recipient });
+        console.warn(
+          "[Scrapper Debug] Cannot sync: missing sender or recipient.",
+          { sender, recipient },
+        );
         return false;
       }
 
       if (!sender.profileUrl || !recipient.profileUrl) {
-        console.warn("[Scrapper Debug] Cannot sync: missing profileUrl.", { sender, recipient });
+        console.warn("[Scrapper Debug] Cannot sync: missing profileUrl.", {
+          sender,
+          recipient,
+        });
         return false;
       }
 
@@ -205,17 +214,31 @@ export function useLinkedInMessageSync() {
           sender: {
             name: nonEmpty(msgSender.name, "Unknown"),
             profileUrl: msgSender.profileUrl as string,
-            distance: nonEmpty(msgSender.distance ?? undefined, isSelf ? "SELF" : "UNKNOWN"),
+            distance: nonEmpty(
+              msgSender.distance ?? undefined,
+              isSelf ? "SELF" : "UNKNOWN",
+            ),
           },
           receiver: {
             name: nonEmpty(msgReceiver.name, "Unknown"),
             profileUrl: msgReceiver.profileUrl as string,
-            distance: nonEmpty(msgReceiver.distance ?? undefined, isSelf ? "UNKNOWN" : "SELF"),
+            distance: nonEmpty(
+              msgReceiver.distance ?? undefined,
+              isSelf ? "UNKNOWN" : "SELF",
+            ),
           },
         };
       });
 
-      const body = { conversationKey, messages: payloadMessages };
+      let userTimeZone = "UTC";
+      try {
+        userTimeZone =
+          Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      } catch {
+        userTimeZone = "UTC";
+      }
+
+      const body = { conversationKey, messages: payloadMessages, userTimeZone };
       console.log("[Scrapper Debug] Syncing messages to backend:", body);
 
       try {
@@ -224,7 +247,8 @@ export function useLinkedInMessageSync() {
 
         const maxTs = messages.reduce(
           (max: number, msg) =>
-            typeof msg.deliveredAt === "number" && !Number.isNaN(msg.deliveredAt)
+            typeof msg.deliveredAt === "number" &&
+            !Number.isNaN(msg.deliveredAt)
               ? Math.max(max, msg.deliveredAt)
               : max,
           -Infinity,
@@ -262,7 +286,9 @@ export function useLinkedInMessageSync() {
       if (domRecipient) recipient = domRecipient;
     }
 
-    console.group(`[HubLead-style] Loaded LinkedIn messages for conversation ${conversationKey}`);
+    console.group(
+      `[HubLead-style] Loaded LinkedIn messages for conversation ${conversationKey}`,
+    );
     console.log("Participants (approx):", { sender, recipient });
     console.table(
       newMessages.map((msg) => ({
@@ -281,7 +307,8 @@ export function useLinkedInMessageSync() {
   useEffect(() => {
     const handler = (e: Event) => handleNetworkCall(e);
     window.addEventListener("HL_NETWORK_CALL", handler as EventListener);
-    return () => window.removeEventListener("HL_NETWORK_CALL", handler as EventListener);
+    return () =>
+      window.removeEventListener("HL_NETWORK_CALL", handler as EventListener);
   }, [handleNetworkCall]);
 
   // DOM observer: detects real-time messages delivered via WebSocket (not interceptable).

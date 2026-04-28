@@ -24,6 +24,8 @@ function HubLeadRoot() {
   const observers: MutationObserver[] = [];
   let messageRoot: ReactDOM.Root | null = null;
   let containerWatcher: MutationObserver | null = null;
+  let composerArrivalObserver: MutationObserver | null = null;
+  let injectionPollTimer: ReturnType<typeof setInterval> | null = null;
   let isInjecting = false;
   let healthCheckTimer: ReturnType<typeof setTimeout> | null = null;
   let sidebarRoot: ReactDOM.Root | null = null;
@@ -100,7 +102,10 @@ function HubLeadRoot() {
       }
     });
 
-    containerWatcher.observe(document.body, { childList: true, subtree: true });
+    containerWatcher.observe(document, {
+      childList: true,
+      subtree: true,
+    });
   }
 
   // --- Profile page injection (/in/) ---
@@ -154,64 +159,182 @@ function HubLeadRoot() {
   // --- Messaging page injection (/messaging) ---
 
   function findMessageInputRoot(): HTMLElement | null {
-    // 1. Try to scope to the active conversation thread container
-    //    (matches HubLead's layout selectors: [id^="message-thread-"], .msg-convo-wrapper)
+    // Scope to the active conversation thread when possible.
     const threadContainer =
       document.querySelector<HTMLElement>("[id^='message-thread-']") ??
       document.querySelector<HTMLElement>(".msg-convo-wrapper");
 
     const scope: ParentNode = threadContainer ?? document;
 
-    // 2. Within that scope, collect all candidate editors
+    // Broadened selectors. LinkedIn has rotated class names; accept any
+    // composer-shaped element. Order matters — most specific first so we
+    // prefer a real composer over an unrelated textarea.
+    const candidateSelector = [
+      '.msg-form__contenteditable[contenteditable="true"]',
+      '.msg-form-v2__contenteditable[contenteditable="true"]',
+      '[class*="msg-form"][contenteditable="true"]',
+      'div[contenteditable="true"][role="textbox"]',
+      'textarea',
+    ].join(", ");
+
     const candidates = Array.from(
-      scope.querySelectorAll<HTMLElement>(
-        '.msg-form__contenteditable[contenteditable="true"], textarea',
-      ),
+      scope.querySelectorAll<HTMLElement>(candidateSelector),
     );
 
     if (candidates.length === 0) {
+      // One-line DOM probe so each poll tick reports what's actually in
+      // the page when no candidate matches. Helps update selectors fast.
+      // const msgFormEls = document.querySelectorAll('[class*="msg-form" i]');
+      // const editableEls = document.querySelectorAll('[contenteditable="true"]');
+      // console.log("[Scrapper Debug] findMessageInputRoot: no candidates", {
+      //   threadContainer: threadContainer?.id ?? null,
+      //   threadContainerClass: threadContainer?.className ?? null,
+      //   msgFormCount: msgFormEls.length,
+      //   msgFormSample: Array.from(msgFormEls)
+      //     .slice(0, 5)
+      //     .map((e) => (e as HTMLElement).className),
+      //   editableCount: editableEls.length,
+      //   editableSample: Array.from(editableEls)
+      //     .slice(0, 5)
+      //     .map((e) => (e as HTMLElement).className),
+      // });
       return null;
     }
 
-    // 3. Prefer a *visible* editor (attached and non-zero size)
     const visibleEditor =
       candidates.find((el) => {
         const rect = el.getBoundingClientRect();
         return el.offsetParent !== null && rect.width > 0 && rect.height > 0;
       }) ?? candidates[0];
 
-    // 4. Return the closest form/msg-form wrapper as the "input root"
     const form = visibleEditor.closest("form") as HTMLElement | null;
     return (
       form ??
-      (visibleEditor.closest(".msg-form") as HTMLElement | null) ??
+      (visibleEditor.closest(
+        '.msg-form, [class*="msg-form"]',
+      ) as HTMLElement | null) ??
       visibleEditor
     );
   }
 
-  function waitForMessageInputRoot(
-    timeoutMs = 8000,
-    pollMs = 250,
-  ): Promise<HTMLElement | null> {
-    return new Promise((resolve) => {
-      const start = Date.now();
+  // Try to inject right now. Returns true when the overlay is present
+  // (either freshly injected or already there); returns false when the
+  // composer isn't in the DOM yet so the caller can keep waiting.
+  function performInjection(): boolean {
+    if (!window.location.href.includes("/messaging")) return true;
 
-      const tick = () => {
-        const root = findMessageInputRoot();
-        if (root) return resolve(root);
+    if (document.getElementById("linkedin-extension-message-sync-overlay")) {
+      return true;
+    }
 
-        if (Date.now() - start >= timeoutMs) return resolve(null);
+    const inputRoot = findMessageInputRoot();
+    // console.log("[Scrapper Debug] performInjection", {
+    //   url: window.location.href,
+    //   formFound: !!inputRoot,
+    //   hasParent: !!inputRoot?.parentElement,
+    // });
+    if (!inputRoot || !inputRoot.parentElement) return false;
 
-        setTimeout(tick, pollMs);
-      };
+    const hostParent = inputRoot.parentElement;
+    const container = document.createElement("div");
+    container.id = "linkedin-extension-message-sync-overlay";
+    container.style.width = "100%";
+    container.style.display = "flex";
+    container.style.justifyContent = "center";
+    container.style.marginBottom = "8px";
+    container.style.pointerEvents = "auto";
 
-      tick();
+    hostParent.insertBefore(container, inputRoot);
+
+    console.log("[Scrapper Debug] Injecting overlay", {
+      href: window.location.href,
+      inputRoot,
+      hostParent,
+    });
+
+    renderMessageButton(container);
+    watchContainerRemoval(container);
+    return true;
+  }
+
+  // Always-armed observer for the entire /messaging visit. Each fire calls
+  // performInjection (idempotent: short-circuits when overlay is already
+  // present). Stays armed even after first success so any later loss of the
+  // overlay (form rebuild that containerWatcher misses) is auto-corrected.
+  // Disconnects only when the user leaves /messaging.
+  function armComposerObserver() {
+    if (composerArrivalObserver) return;
+
+    // console.log("[Scrapper Debug] composer observer armed");
+
+    composerArrivalObserver = new MutationObserver(() => {
+      // console.log(
+      //   "[Scrapper Debug] composer observer callback invoked",
+      // );
+      if (!window.location.href.includes("/messaging")) {
+        disarmComposerObserver();
+        return;
+      }
+      const overlayPresent = !!document.getElementById(
+        "linkedin-extension-message-sync-overlay",
+      );
+      if (overlayPresent) return;
+      // const formFound = !!findMessageInputRoot();
+      // console.log("[Scrapper Debug] composer observer fired", {
+      //   formFound,
+      //   overlayPresent,
+      // });
+      performInjection();
+    });
+
+    composerArrivalObserver.observe(document, {
+      childList: true,
+      subtree: true,
     });
   }
 
-  async function initMessagingInjection() {
-    if (!window.location.href.includes("/messaging")) return;
-    if (isInjecting) return; // prevent concurrent calls
+  function disarmComposerObserver() {
+    if (composerArrivalObserver) {
+      composerArrivalObserver.disconnect();
+      composerArrivalObserver = null;
+    }
+  }
+
+  // Belt-and-suspenders fallback. Runs only while on /messaging and
+  // stops the moment the overlay is in the DOM. Catches any case where
+  // the MutationObserver path silently fails (e.g., observer attached
+  // to a node not on LinkedIn's mutation path).
+  function startInjectionPoll() {
+    if (injectionPollTimer) return;
+    // console.log("[Scrapper Debug] injection poll started");
+    injectionPollTimer = setInterval(() => {
+      if (!window.location.href.includes("/messaging")) {
+        stopInjectionPoll();
+        return;
+      }
+      if (document.getElementById("linkedin-extension-message-sync-overlay")) {
+        return;
+      }
+      // console.log("[Scrapper Debug] injection poll tick");
+      performInjection();
+    }, 1000);
+  }
+
+  function stopInjectionPoll() {
+    if (injectionPollTimer) {
+      clearInterval(injectionPollTimer);
+      injectionPollTimer = null;
+      // console.log("[Scrapper Debug] injection poll stopped");
+    }
+  }
+
+  function initMessagingInjection() {
+    if (!window.location.href.includes("/messaging")) {
+      disarmComposerObserver();
+      stopInjectionPoll();
+      return;
+    }
+    if (isInjecting) return; // guard against re-entry
     isInjecting = true;
 
     try {
@@ -219,33 +342,15 @@ function HubLeadRoot() {
         .getElementById("linkedin-extension-message-sync-overlay")
         ?.remove();
 
-      const inputRoot = await waitForMessageInputRoot();
-      // Validate element is still attached after the async wait
-      if (!inputRoot || !inputRoot.parentElement) return;
-
-      // Another concurrent call may have already injected
-      if (document.getElementById("linkedin-extension-message-sync-overlay"))
-        return;
-
-      const hostParent = inputRoot.parentElement;
-      const container = document.createElement("div");
-      container.id = "linkedin-extension-message-sync-overlay";
-      container.style.width = "100%";
-      container.style.display = "flex";
-      container.style.justifyContent = "center";
-      container.style.marginBottom = "8px";
-      container.style.pointerEvents = "auto";
-
-      hostParent.insertBefore(container, inputRoot);
-
-      console.log("[Scrapper Debug] Injecting overlay", {
-        href: window.location.href,
-        inputRoot,
-        hostParent,
-      });
-
-      renderMessageButton(container);
-      watchContainerRemoval(container);
+      performInjection();
+      // Arm the persistent observer unconditionally for the duration of
+      // the /messaging visit — handles late composer mount AND any later
+      // loss of the overlay. Idempotent.
+      armComposerObserver();
+      // Start a 1 s polling backstop in case the observer is silent for
+      // any reason (e.g., bound to a node not on LinkedIn's mutation
+      // path). Self-stops once the overlay is in the DOM.
+      startInjectionPoll();
     } finally {
       isInjecting = false;
     }
@@ -263,52 +368,86 @@ function HubLeadRoot() {
     renderSidebar(container, showFetchProfile);
   }
 
-  // --- SPA URL watcher ---
+  // --- SPA URL change handling ---
+  // Idempotent: callable from any source (popstate, interval, body
+  // mutation). Returns immediately if the URL hasn't actually changed.
+
+  function handleUrlChange() {
+    const newUrl = location.href;
+    if (newUrl === currentUrl) return;
+
+    // console.log(
+    //   "[Scrapper Debug] url change detected:",
+    //   currentUrl,
+    //   "→",
+    //   newUrl,
+    // );
+    currentUrl = newUrl;
+
+    // Cancel any pending health-check and reset injection guard
+    if (healthCheckTimer) {
+      clearTimeout(healthCheckTimer);
+      healthCheckTimer = null;
+    }
+    isInjecting = false;
+
+    // Remove old injected UIs
+    const oldCard = document.getElementById("linkedin-extension-card");
+    oldCard?.remove();
+
+    // Stop the container watcher BEFORE removing the container so it doesn't
+    // trigger a spurious re-injection during intentional URL navigation.
+    if (containerWatcher) {
+      containerWatcher.disconnect();
+      containerWatcher = null;
+    }
+
+    // Disarm any composer-arrival observer left over from the previous
+    // route; the new route will re-arm if needed.
+    disarmComposerObserver();
+    stopInjectionPoll();
+
+    const oldMessageSync = document.getElementById(
+      "linkedin-extension-message-sync-overlay",
+    );
+
+    if (messageRoot) {
+      try {
+        messageRoot.unmount();
+      } catch {
+        // ignore
+      }
+      messageRoot = null;
+    }
+
+    oldMessageSync?.remove();
+
+    initProfileInjection();
+    initMessagingInjection();
+    initSidebarInjection();
+  }
+
+  // --- URL change triggers ---
+  // 1. popstate — browser back/forward.
+  // 2. setInterval — backstop that catches any pushState/replaceState
+  //    LinkedIn does without an immediate DOM mutation. 500 ms is below
+  //    perceptible UI lag.
+  // 3. urlObserver (below) — kept as DOM-driven safety net AND host for
+  //    the existing "container is missing while on /messaging" 500 ms
+  //    health check.
+
+  window.addEventListener("popstate", handleUrlChange);
+
+  setInterval(() => {
+    if (location.href !== currentUrl) handleUrlChange();
+  }, 500);
 
   const urlObserver = new MutationObserver(() => {
     if (location.href !== currentUrl) {
-      currentUrl = location.href;
-
-      // Cancel any pending health-check and reset injection guard
-      if (healthCheckTimer) {
-        clearTimeout(healthCheckTimer);
-        healthCheckTimer = null;
-      }
-      isInjecting = false; // force reset so the new navigation's call can proceed
-
-      // Remove old injected UIs
-      const oldCard = document.getElementById("linkedin-extension-card");
-      oldCard?.remove();
-
-      // Stop the container watcher BEFORE removing the container so it doesn't
-      // trigger a spurious re-injection during intentional URL navigation.
-      if (containerWatcher) {
-        containerWatcher.disconnect();
-        containerWatcher = null;
-      }
-
-      const oldMessageSync = document.getElementById(
-        "linkedin-extension-message-sync-overlay",
-      );
-
-      // Unmount React tree for the old overlay (if any), then clear the root ref
-      if (messageRoot) {
-        try {
-          messageRoot.unmount();
-        } catch {
-          // ignore
-        }
-        messageRoot = null;
-      }
-
-      oldMessageSync?.remove();
-
-      // Re-run injections for the new page
-      initProfileInjection();
-      void initMessagingInjection();
-      initSidebarInjection();
-    } else if (window.location.href.includes("/messaging")) {
-      // Fallback: 500ms after DOM settles, re-inject if container is missing
+      handleUrlChange();
+      return;
+    }
+    if (window.location.href.includes("/messaging")) {
       if (healthCheckTimer) clearTimeout(healthCheckTimer);
       healthCheckTimer = setTimeout(() => {
         healthCheckTimer = null;
@@ -324,13 +463,16 @@ function HubLeadRoot() {
             }
             messageRoot = null;
           }
-          void initMessagingInjection();
+          initMessagingInjection();
         }
       }, 500);
     }
   });
 
-  urlObserver.observe(document.body, { childList: true, subtree: true });
+  urlObserver.observe(document, {
+    childList: true,
+    subtree: true,
+  });
 
   // Mount always-on interceptor listener (singleton, never removed)
   (function mountHubLeadRoot() {

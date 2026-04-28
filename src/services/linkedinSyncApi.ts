@@ -30,6 +30,7 @@ export const linkedinApi = {
       sender: { name: string; profileUrl: string; distance: string };
       receiver: { name: string; profileUrl: string; distance: string };
     }[];
+    userTimeZone?: string;
   }) => {
     const response = await fetch(`${API_BASE_URL}/hubspot/upsert-messages`, {
       method: "POST",
