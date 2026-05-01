@@ -1,11 +1,10 @@
 import { API_BASE_URL, getAuthHeaders } from "./_apiBase";
 
 export const tasksApi = {
-  getTasks: async (contactId: string) => {
-    const response = await fetch(
-      `${API_BASE_URL}/hubspot/tasks?contactId=${contactId}`,
-      { headers: await getAuthHeaders() },
-    );
+  getTasks: async (contactId: string, userTimeZone?: string) => {
+    let url = `${API_BASE_URL}/hubspot/tasks?contactId=${contactId}`;
+    if (userTimeZone) url += `&userTimeZone=${encodeURIComponent(userTimeZone)}`;
+    const response = await fetch(url, { headers: await getAuthHeaders() });
     if (!response.ok) {
       const error = await response.json();
       console.error("API Error:", error);
@@ -23,6 +22,7 @@ export const tasksApi = {
     assignedTo?: string;
     comment?: string;
     contactId?: string;
+    userTimeZone?: string;
   }) => {
     const response = await fetch(`${API_BASE_URL}/hubspot/create-task`, {
       method: "POST",
@@ -47,6 +47,7 @@ export const tasksApi = {
       status: string;
       assignedTo?: string;
       comment?: string;
+      userTimeZone?: string;
     },
   ) => {
     const response = await fetch(`${API_BASE_URL}/hubspot/tasks/${taskId}`, {

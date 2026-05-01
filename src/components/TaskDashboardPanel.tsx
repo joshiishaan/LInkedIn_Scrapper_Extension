@@ -66,7 +66,9 @@ export default function TaskDashboardPanel({
     if (!hubspotContactId) return;
     setIsLoading(true);
     try {
-      const response = await tasksApi.getTasks(hubspotContactId);
+      let tz = "UTC";
+      try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { tz = "UTC"; }
+      const response = await tasksApi.getTasks(hubspotContactId, tz);
       const fetchedTasks = response.data || [];
       setTasks(fetchedTasks);
       onTasksCountChange?.(fetchedTasks.length);
