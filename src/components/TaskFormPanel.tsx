@@ -124,6 +124,13 @@ export default function TaskFormPanel({
 
     setIsSaving(true);
 
+    let userTimeZone = "UTC";
+    try {
+      userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    } catch {
+      userTimeZone = "UTC";
+    }
+
     const payload = {
       taskName,
       dueDate: dueDate || undefined,
@@ -136,6 +143,7 @@ export default function TaskFormPanel({
         : status,
       assignedTo: assignedTo || undefined,
       comment: comment || undefined,
+      userTimeZone,
     };
 
     try {

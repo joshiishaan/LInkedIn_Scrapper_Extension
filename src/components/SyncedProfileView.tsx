@@ -175,7 +175,9 @@ export default function SyncedProfileView({
 
       setTasksCountLoading(true);
       try {
-        const response = await tasksApi.getTasks(hubspotContactId);
+        let tz = "UTC";
+        try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { tz = "UTC"; }
+        const response = await tasksApi.getTasks(hubspotContactId, tz);
         const tasks = response.data || [];
         setTasksCount(tasks.length);
       } catch (err) {

@@ -9,10 +9,16 @@ import { useTheme } from "../context/ThemeContext";
 import {
   fetchLinkedInProfile,
   fetchLinkedInCompany,
+  parseProfileData,
+  parseCompanyData,
   getProfileIdFromUrl,
   extractCompanyIdFromUrl,
   fetchLinkedInContactInfo,
 } from "../utils/linkedinApi";
+import {
+  getInterceptedProfile,
+  getInterceptedCompany,
+} from "../hooks/useLinkedInProfileInterceptor";
 import { linkedinApi, hubspotApi } from "../services/api";
 import CompanySelectionModal from "./CompanySelectionModal";
 import SyncedProfileView from "./SyncedProfileView";
@@ -215,7 +221,22 @@ export default function ProfileCard() {
 
     setLoading(true);
     try {
-      const result = await fetchLinkedInProfile(profileId);
+      // ── 1. Try intercepted profile data ──────────────────────────────────
+      let result: any;
+      const intercepted = getInterceptedProfile(profileId);
+
+      if (intercepted) {
+        console.log("[HubLead] Using intercepted profile data (no Voyager call needed)");
+        result = parseProfileData({ elements: [intercepted.raw] });
+        if (!result?.basicInfo?.firstName) {
+          console.log("[HubLead] Intercepted profile data incomplete — falling back to direct Voyager call");
+          result = await fetchLinkedInProfile(profileId);
+        }
+      } else {
+        console.log("[HubLead] No intercepted data — falling back to direct Voyager call");
+        result = await fetchLinkedInProfile(profileId);
+      }
+
       setProfileData(result);
 
       // Filter for current positions (no end date)
@@ -254,10 +275,25 @@ export default function ProfileCard() {
         throw new Error("Could not extract company ID");
       }
 
-      const [companyData, contactInfo] = await Promise.all([
-        fetchLinkedInCompany(companyId),
-        fetchLinkedInContactInfo(profile.basicInfo.publicIdentifier),
-      ]);
+      // ── Try intercepted company data ──────────────────────────────────────
+      let companyData: any;
+      const interceptedCompany = getInterceptedCompany(companyId);
+
+      if (interceptedCompany) {
+        console.log("[HubLead] Using intercepted company data for:", companyId);
+        try {
+          companyData = parseCompanyData(interceptedCompany.raw);
+        } catch {
+          console.log("[HubLead] Intercepted company data parse failed — falling back to Voyager call");
+          companyData = await fetchLinkedInCompany(companyId);
+        }
+      } else {
+        console.log("[HubLead] No intercepted company data — falling back to Voyager call");
+        companyData = await fetchLinkedInCompany(companyId);
+      }
+
+      // Contact info: always direct API (not reliably interceptable)
+      const contactInfo = await fetchLinkedInContactInfo(profile.basicInfo.publicIdentifier);
 
       // Build payload for backend
       const finalPayload = {
