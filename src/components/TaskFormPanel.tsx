@@ -3,6 +3,8 @@ import { useTheme } from "../context/ThemeContext";
 import { tasksApi } from "../services/api";
 import { useShadowPortal } from "../hooks/useShadowPortal";
 import { createPortal } from "react-dom";
+import DatePicker from "./DatePicker";
+import TimePicker from "./TimePicker";
 
 interface Task {
   id: string;
@@ -348,16 +350,14 @@ export default function TaskFormPanel({
           </div>
 
           <div style={{ display: "flex", gap: "12px" }}>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <label style={labelStyle}>Due date</label>
-              <input
-                type="date"
+              <DatePicker
                 value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                style={{
-                  ...inputStyle,
-                  colorScheme: isDark ? "dark" : "light",
-                }}
+                onChange={setDueDate}
+                isDark={isDark}
+                colors={colors}
+                placeholder="Select date"
               />
               {showValidation && validationErrors.dueDate && (
                 <div
@@ -371,20 +371,15 @@ export default function TaskFormPanel({
                 </div>
               )}
             </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <label style={labelStyle}>Time</label>
-              <input
-                type="time"
+              <TimePicker
                 value={time}
-                onChange={(e) => setTime(e.target.value)}
+                onChange={setTime}
                 disabled={!dueDate}
-                style={{
-                  ...inputStyle,
-                  colorScheme: isDark ? "dark" : "light",
-                  background: !dueDate ? colors.bgSecondary : colors.inputBg,
-                  cursor: !dueDate ? "not-allowed" : "text",
-                  opacity: !dueDate ? 0.6 : 1,
-                }}
+                isDark={isDark}
+                colors={colors}
+                placeholder="Select time"
               />
               {showValidation && validationErrors.time && (
                 <div
