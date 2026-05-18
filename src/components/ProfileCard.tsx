@@ -239,17 +239,37 @@ export default function ProfileCard() {
 
       setProfileData(result);
 
-      // Filter for current positions (no end date)
-      const current = result.experience.filter(
-        (exp: Experience) => !exp.endDate,
+      // LinkedIn sometimes returns endDate as an empty object {} or { year: null, month: null }
+      // for current positions instead of null. Treat those as "no end date".
+      const isCurrentPosition = (exp: Experience): boolean => {
+        if (!exp.endDate) return true;
+        if (typeof exp.endDate === "object" && exp.endDate !== null) {
+          const d = exp.endDate as any;
+          return !d.year && !d.month;
+        }
+        return false;
+      };
+
+      // Only consider current positions that have a valid LinkedIn company page URL.
+      // External URLs (personal websites, company homepages) are excluded here —
+      // a second guard runs inside fetchCompanyData after we have the actual company data.
+      const allCurrent = result.experience.filter(isCurrentPosition);
+      const current = allCurrent.filter(
+        (exp: Experience) => !!extractCompanyIdFromUrl(exp.companyUrl ?? ""),
       );
 
       if (current.length === 0) {
-        alert("No current companies found");
+        if (allCurrent.length > 0) {
+          alert(
+            "Current position found but no LinkedIn company page is associated. Cannot sync company data.",
+          );
+        } else {
+          alert("No current companies found");
+        }
       } else if (current.length === 1) {
         await fetchCompanyData(current[0], result);
       } else {
-        // Multiple current companies - show selection modal
+        // Multiple current positions with valid LinkedIn company pages — show selection modal
         setCurrentCompanies(current);
         setShowModal(true);
       }
@@ -294,6 +314,34 @@ export default function ProfileCard() {
 
       // Contact info: always direct API (not reliably interceptable)
       const contactInfo = await fetchLinkedInContactInfo(profile.basicInfo.publicIdentifier);
+
+      // Personal-brand guard: if the company's external website domain matches
+      // one of the contact's personal websites, this is a personal brand / freelance
+      // page, NOT an employer. Syncing it would set the personal website URL as the
+      // primary company in HubSpot, which is wrong.
+      const extractHostname = (url?: string | null): string | null => {
+        if (!url) return null;
+        try {
+          const src = /^https?:\/\//i.test(url.trim())
+            ? url.trim()
+            : `https://${url.trim()}`;
+          return new URL(src).hostname.replace(/^www\./i, "").toLowerCase();
+        } catch {
+          return null;
+        }
+      };
+      const companyWebDomain = extractHostname(companyData.basicInfo.website);
+      const personalDomains = (contactInfo.websites ?? [])
+        .map((u: string) => extractHostname(u))
+        .filter(Boolean);
+      if (companyWebDomain && personalDomains.includes(companyWebDomain)) {
+        alert(
+          `"${experience.company}" has the same website as your LinkedIn personal website (${companyData.basicInfo.website}).\n\n` +
+            `Personal websites/brands should not be synced as your employer in HubSpot. ` +
+            `Please select your actual employer company.`,
+        );
+        return;
+      }
 
       // Build payload for backend
       const finalPayload = {

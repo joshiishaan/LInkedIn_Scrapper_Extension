@@ -1,23 +1,28 @@
 import { API_BASE_URL, getAuthHeaders } from "./_apiBase";
 
 export const notesApi = {
-  getNotes: async (contactId: string) => {
+  getNotes: async (contactId: string, after?: string, limit = 20) => {
+    const params = new URLSearchParams({ contactId, limit: String(limit) });
+    if (after) params.set("after", after);
     const response = await fetch(
-      `${API_BASE_URL}/hubspot/notes?contactId=${contactId}`,
+      `${API_BASE_URL}/hubspot/notes?${params}`,
       { headers: await getAuthHeaders() },
     );
-    if (!response.ok) {
-      const error = await response.json();
-      console.error("API Error:", error);
-      throw new Error("Failed to fetch notes");
-    }
+    if (!response.ok) throw new Error("Failed to fetch notes");
+    return response.json();
+  },
+
+  getAllNotes: async () => {
+    const response = await fetch(
+      `${API_BASE_URL}/hubspot/notes/all`,
+      { headers: await getAuthHeaders() },
+    );
+    if (!response.ok) throw new Error("Failed to fetch notes");
     return response.json();
   },
 
   createNote: async (payload: {
     noteTitle?: string;
-    dealValue?: string;
-    nextStep?: string;
     notes: string;
     contactId?: string;
   }) => {
@@ -26,33 +31,20 @@ export const notesApi = {
       headers: await getAuthHeaders(),
       body: JSON.stringify(payload),
     });
-    if (!response.ok) {
-      const error = await response.json();
-      console.error("API Error:", error);
-      throw new Error("Failed to create note");
-    }
+    if (!response.ok) throw new Error("Failed to create note");
     return response.json();
   },
 
   updateNote: async (
     noteId: string,
-    payload: {
-      noteTitle?: string;
-      dealValue?: string;
-      nextStep?: string;
-      notes: string;
-    },
+    payload: { noteTitle?: string; notes: string },
   ) => {
     const response = await fetch(`${API_BASE_URL}/hubspot/notes/${noteId}`, {
       method: "PATCH",
       headers: await getAuthHeaders(),
       body: JSON.stringify(payload),
     });
-    if (!response.ok) {
-      const error = await response.json();
-      console.error("API Error:", error);
-      throw new Error("Failed to update note");
-    }
+    if (!response.ok) throw new Error("Failed to update note");
     return response.json();
   },
 
@@ -61,11 +53,7 @@ export const notesApi = {
       method: "DELETE",
       headers: await getAuthHeaders(),
     });
-    if (!response.ok) {
-      const error = await response.json();
-      console.error("API Error:", error);
-      throw new Error("Failed to delete note");
-    }
+    if (!response.ok) throw new Error("Failed to delete note");
     return response.json();
   },
 };

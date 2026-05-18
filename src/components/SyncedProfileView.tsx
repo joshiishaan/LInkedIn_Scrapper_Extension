@@ -369,7 +369,7 @@ export default function SyncedProfileView({
       setNotesCountLoading(true);
       try {
         const response = await notesApi.getNotes(hubspotContactId);
-        const notes = response.data || [];
+        const notes = response.data?.notes ?? response.data ?? [];
         setNotesCount(notes.length);
       } catch (err) {
         console.error("Failed to load notes count:", err);

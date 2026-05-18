@@ -25,6 +25,26 @@ export const hubspotApi = {
     return response.json();
   },
 
+  getAllContacts: async () => {
+    const response = await fetch(`${API_BASE_URL}/hubspot/contacts/all`, {
+      headers: await getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error("Failed to fetch contacts");
+    return response.json();
+  },
+
+  getContacts: async (params?: { limit?: number; sortBy?: string }) => {
+    const p = new URLSearchParams({
+      limit: String(params?.limit ?? 200),
+      sortBy: params?.sortBy ?? "firstname",
+    });
+    const response = await fetch(`${API_BASE_URL}/hubspot/contacts?${p}`, {
+      headers: await getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error("Failed to fetch contacts");
+    return response.json();
+  },
+
   updateContact: async (payload: any, username: string) => {
     const response = await fetch(
       `${API_BASE_URL}/hubspot/update-contact?username=${username}`,

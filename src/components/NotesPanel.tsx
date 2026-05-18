@@ -46,40 +46,58 @@ export default function NotesPanel({
 
   const [notes, setNotes] = useState<Note[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+
   const [showExpandedPanel, setShowExpandedPanel] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
-
   const [content, setContent] = useState("");
   const [showValidation, setShowValidation] = useState(false);
   const [contentError, setContentError] = useState("");
-
   const [title, setTitle] = useState("");
 
   const shadowRoot = useShadowPortal(isOpen);
 
-  // Load notes on panel open
   useEffect(() => {
-    if (isOpen && hubspotContactId) {
-      loadNotes();
-    }
+    if (isOpen && hubspotContactId) loadNotes();
   }, [isOpen, hubspotContactId]);
 
   const loadNotes = async () => {
     if (!hubspotContactId) return;
     setIsLoading(true);
+    setNextCursor(null);
     try {
-      const response = await notesApi.getNotes(hubspotContactId);
-      const fetchedNotes = response.data || [];
-      setNotes(fetchedNotes);
-      onNotesCountChange?.(fetchedNotes.length);
+      const response = await notesApi.getNotes(hubspotContactId, undefined, 20);
+      const { notes: fetched, hasMore: hm, nextCursor: nc } = response.data;
+      setNotes(fetched);
+      setHasMore(hm);
+      setNextCursor(nc);
+      onNotesCountChange?.(fetched.length);
     } catch (err) {
       console.error("Failed to load notes:", err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadMoreNotes = async () => {
+    if (!hasMore || isLoadingMore || !nextCursor || !hubspotContactId) return;
+    setIsLoadingMore(true);
+    try {
+      const response = await notesApi.getNotes(hubspotContactId, nextCursor, 20);
+      const { notes: more, hasMore: hm, nextCursor: nc } = response.data;
+      setNotes((prev) => [...prev, ...more]);
+      setHasMore(hm);
+      setNextCursor(nc);
+    } catch (err) {
+      console.error("Failed to load more notes:", err);
+    } finally {
+      setIsLoadingMore(false);
     }
   };
 
@@ -104,57 +122,28 @@ export default function NotesPanel({
 
   const hasChanges = () => {
     if (!editingNote) return true;
-    return (
-      title !== (editingNote.noteTitle || "") || content !== editingNote.notes
-    );
+    return title !== (editingNote.noteTitle || "") || content !== editingNote.notes;
   };
 
   const handleSaveNote = async () => {
     const trimmed = content.trim();
-
-    // Validate only when user clicks the button
-    if (!trimmed) {
-      setContentError("Note is required.");
-      setShowValidation(true);
-      return;
-    }
-
+    if (!trimmed) { setContentError("Note is required."); setShowValidation(true); return; }
     if (isSaving) return;
-
     setShowValidation(false);
     setContentError("");
     setIsSaving(true);
-
-    const payload = {
-      noteTitle: title || undefined,
-      notes: trimmed,
-    };
-
+    const payload = { noteTitle: title || undefined, notes: trimmed };
     try {
       if (editingNote) {
         await notesApi.updateNote(editingNote.id, payload);
         setNotes((prev) =>
           prev.map((n) =>
-            n.id === editingNote.id
-              ? {
-                  ...n,
-                  noteTitle: title,
-                  notes: trimmed,
-                }
-              : n,
+            n.id === editingNote.id ? { ...n, noteTitle: title, notes: trimmed } : n,
           ),
         );
       } else {
-        const response = await notesApi.createNote({
-          ...payload,
-          contactId: hubspotContactId!,
-        });
-        const newNote: Note = {
-          id: response.data,
-          noteTitle: title,
-          notes: trimmed,
-          timestamp: new Date().toISOString(),
-        };
+        const response = await notesApi.createNote({ ...payload, contactId: hubspotContactId! });
+        const newNote: Note = { id: response.data, noteTitle: title, notes: trimmed, timestamp: new Date().toISOString() };
         setNotes((prev) => [newNote, ...prev]);
         onNotesCountChange?.(notes.length + 1);
       }
@@ -167,19 +156,14 @@ export default function NotesPanel({
     }
   };
 
-  const deleteNote = (id: string) => {
-    setNoteToDelete(id);
-    setShowDeleteConfirm(true);
-  };
+  const deleteNote = (id: string) => { setNoteToDelete(id); setShowDeleteConfirm(true); };
 
   const confirmDelete = async () => {
     if (!noteToDelete) return;
-
     const noteId = noteToDelete;
     setShowDeleteConfirm(false);
     setNoteToDelete(null);
     setDeletingNoteId(noteId);
-
     try {
       await notesApi.deleteNote(noteId);
       setNotes((prev) => prev.filter((n) => n.id !== noteId));
@@ -192,95 +176,46 @@ export default function NotesPanel({
     }
   };
 
-  const cancelDelete = () => {
-    setShowDeleteConfirm(false);
-    setNoteToDelete(null);
-  };
+  const cancelDelete = () => { setShowDeleteConfirm(false); setNoteToDelete(null); };
 
   if (!isOpen || !shadowRoot) return null;
 
   const isFormValid = content.trim() && (!editingNote || hasChanges());
 
-  const panelContent = (
-    <>
-      <div
-        onClick={onClose}
-        style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: "rgba(0, 0, 0, 0.3)",
-          backdropFilter: "blur(2px)",
-          pointerEvents: "auto",
-        }}
-      />
-
-      {!showExpandedPanel && (
-        <NoteListPanel
-          colors={colors}
-          isDark={isDark}
-          notes={notes}
-          isLoading={isLoading}
-          deletingNoteId={deletingNoteId}
-          contactName={contactName}
-          onClose={onClose}
-          onCreateNote={handleCreateNote}
-          onEditNote={handleEditNote}
-          onDeleteNote={deleteNote}
-        />
-      )}
-
-      {showExpandedPanel && (
-        <NoteEditorPanel
-          colors={colors}
-          isDark={isDark}
-          editingNote={editingNote}
-          contactName={contactName}
-          companyName={companyName}
-          title={title}
-          setTitle={setTitle}
-          content={content}
-          setContent={(value) => {
-            setContent(value);
-            if (showValidation) {
-              setContentError(value.trim() ? "" : "Note is required.");
-            }
-          }}
-          showValidation={showValidation}
-          contentError={contentError}
-          isSaving={isSaving}
-          isFormValid={isFormValid}
-          hasChanges={hasChanges}
-          onClose={handleCloseExpandedPanel}
-          onSave={handleSaveNote}
-        />
-      )}
-
-      {showDeleteConfirm && (
-        <DeleteConfirmDialog
-          colors={colors}
-          isDark={isDark}
-          onConfirm={confirmDelete}
-          onCancel={cancelDelete}
-        />
-      )}
-
-      <style>
-        {`
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
-        `}
-      </style>
-    </>
-  );
-
   return createPortal(
     <>
-      <style>{`* { box-sizing: border-box; }`}</style>
-      {panelContent}
+      <style>{`* { box-sizing: border-box; } @keyframes spin { to { transform: rotate(360deg); } } *::-webkit-scrollbar { display: none; }`}</style>
+      <div
+        onClick={onClose}
+        style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.3)", backdropFilter: "blur(2px)", pointerEvents: "auto" }}
+      />
+      {!showExpandedPanel && (
+        <NoteListPanel
+          colors={colors} isDark={isDark} notes={notes}
+          isLoading={isLoading} isLoadingMore={isLoadingMore} hasMore={hasMore}
+          deletingNoteId={deletingNoteId} contactName={contactName}
+          onClose={onClose} onCreateNote={handleCreateNote}
+          onEditNote={handleEditNote} onDeleteNote={deleteNote}
+          onLoadMore={loadMoreNotes}
+        />
+      )}
+      {showExpandedPanel && (
+        <NoteEditorPanel
+          colors={colors} isDark={isDark} editingNote={editingNote}
+          contactName={contactName} companyName={companyName}
+          title={title} setTitle={setTitle} content={content}
+          setContent={(value) => {
+            setContent(value);
+            if (showValidation) setContentError(value.trim() ? "" : "Note is required.");
+          }}
+          showValidation={showValidation} contentError={contentError}
+          isSaving={isSaving} isFormValid={!!isFormValid} hasChanges={hasChanges}
+          onClose={handleCloseExpandedPanel} onSave={handleSaveNote}
+        />
+      )}
+      {showDeleteConfirm && (
+        <DeleteConfirmDialog colors={colors} isDark={isDark} onConfirm={confirmDelete} onCancel={cancelDelete} />
+      )}
     </>,
     shadowRoot,
   );
