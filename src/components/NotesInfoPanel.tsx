@@ -85,22 +85,23 @@ export default function NotesInfoPanel({ onClose }: NotesInfoPanelProps) {
     }
   };
 
+  const loadNotes = async () => {
+    setIsLoading(true);
+    setNotesError(false);
+    try {
+      const res = await notesApi.getAllNotes();
+      setAllNotes(res.data?.notes ?? []);
+    } catch {
+      setNotesError(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Load all notes once contacts are ready.
   useEffect(() => {
     if (contactsLoading || contactsError) return;
-    const load = async () => {
-      setIsLoading(true);
-      setNotesError(false);
-      try {
-        const res = await notesApi.getAllNotes();
-        setAllNotes(res.data?.notes ?? []);
-      } catch {
-        setNotesError(true);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    load();
+    loadNotes();
   }, [contactsLoading, contactsError]);
 
   useEffect(() => {
@@ -337,13 +338,18 @@ export default function NotesInfoPanel({ onClose }: NotesInfoPanelProps) {
     <>
       <div
         onClick={onClose}
-        style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.3)", backdropFilter: "blur(2px)", pointerEvents: "auto" }}
+        style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.3)", backdropFilter: "blur(2px)", pointerEvents: "auto", animation: "fadeIn 0.18s ease-out" }}
       />
 
       {contactsError ? (
         <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "420px", background: colors.bg, zIndex: 2147483647, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "auto", gap: "12px" }}>
           <p style={{ color: colors.text, fontSize: "14px" }}>Failed to load contacts</p>
           <button onClick={loadContacts} style={{ padding: "8px 20px", background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "13px" }}>Retry</button>
+        </div>
+      ) : notesError ? (
+        <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "420px", background: colors.bg, zIndex: 2147483647, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "auto", gap: "12px" }}>
+          <p style={{ color: colors.text, fontSize: "14px" }}>Failed to load notes</p>
+          <button onClick={loadNotes} style={{ padding: "8px 20px", background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "13px" }}>Retry</button>
         </div>
       ) : !showEditor ? (
         <NoteListPanel
@@ -390,7 +396,7 @@ export default function NotesInfoPanel({ onClose }: NotesInfoPanelProps) {
 
   return createPortal(
     <>
-      <style>{`* { box-sizing: border-box; } @keyframes spin { to { transform: rotate(360deg); } } *::-webkit-scrollbar { display: none; }`}</style>
+      <style>{`* { box-sizing: border-box; } @keyframes spin { to { transform: rotate(360deg); } } @keyframes slideInRight { from { transform: translateX(420px); } to { transform: translateX(0); } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } *::-webkit-scrollbar { display: none; }`}</style>
       {panelContent}
     </>,
     shadowRoot,

@@ -177,8 +177,8 @@ export default function SyncedProfileView({
       try {
         let tz = "UTC";
         try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { tz = "UTC"; }
-        const response = await tasksApi.getTasks(hubspotContactId, tz);
-        const tasks = response.data || [];
+        const response = await tasksApi.getTasks(hubspotContactId, undefined, tz);
+        const tasks = response.data?.tasks || [];
         setTasksCount(tasks.length);
       } catch (err) {
         console.error("Failed to load tasks count:", err);

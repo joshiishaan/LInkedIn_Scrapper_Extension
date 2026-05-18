@@ -6,6 +6,29 @@ import { createPortal } from "react-dom";
 import DatePicker from "./DatePicker";
 import TimePicker from "./TimePicker";
 
+const REMINDER_OPTIONS = [
+  { key: "none",    label: "None" },
+  { key: "at_time", label: "At time of task" },
+  { key: "15min",   label: "15 minutes before" },
+  { key: "30min",   label: "30 minutes before" },
+  { key: "1hour",   label: "1 hour before" },
+  { key: "2hours",  label: "2 hours before" },
+  { key: "1day",    label: "1 day before" },
+  { key: "1week",   label: "1 week before" },
+  { key: "custom",  label: "Custom date & time…" },
+];
+
+const REMINDER_OFFSETS: Record<string, number> = {
+  at_time: 0, "15min": 900000, "30min": 1800000,
+  "1hour": 3600000, "2hours": 7200000, "1day": 86400000, "1week": 604800000,
+};
+
+function isReminderDisabled(key: string, dueDate: string, time: string): boolean {
+  if (!dueDate || !time) return true;
+  const dueMs = new Date(`${dueDate}T${time}:00`).getTime();
+  return (dueMs - (REMINDER_OFFSETS[key] ?? 0)) < Date.now();
+}
+
 interface Task {
   id: string;
   taskName: string;
@@ -53,9 +76,11 @@ export default function TaskFormPanel({
   const [taskName, setTaskName] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [time, setTime] = useState("");
-  const [timeError, setTimeError] = useState("");
   const [priority, setPriority] = useState("Medium");
   const [status, setStatus] = useState("To do");
+  const [reminder, setReminder] = useState("none");
+  const [reminderCustomDate, setReminderCustomDate] = useState("");
+  const [reminderCustomTime, setReminderCustomTime] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
   const [comment, setComment] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -77,6 +102,9 @@ export default function TaskFormPanel({
       setTime(editingTask.time || "");
       setPriority(editingTask.priority);
       setStatus(editingTask.status);
+      setReminder((editingTask as any).reminder || "none");
+      setReminderCustomDate((editingTask as any).reminderCustomDate || "");
+      setReminderCustomTime((editingTask as any).reminderCustomTime || "");
       const owner = owners.find((o) => o.name === editingTask.assignedTo);
       setAssignedTo(owner ? owner.id : "");
       setComment(editingTask.comment || "");
@@ -86,11 +114,34 @@ export default function TaskFormPanel({
       setTime("");
       setPriority("Medium");
       setStatus("To do");
+      setReminder("none");
+      setReminderCustomDate("");
+      setReminderCustomTime("");
       setAssignedTo("");
       setComment("");
     }
-    setTimeError("");
   }, [editingTask, owners]);
+
+  // Auto-reset reminder if due date/time change makes it invalid
+  useEffect(() => {
+    if (reminder === "none" || reminder === "custom") return;
+    if (!dueDate || !time) { setReminder("none"); return; }
+    if (isReminderDisabled(reminder, dueDate, time)) setReminder("none");
+  }, [dueDate, time]);
+
+  // Clear custom reminder date/time when due date changes (constraint may shift)
+  useEffect(() => {
+    setReminderCustomDate("");
+    setReminderCustomTime("");
+  }, [dueDate]);
+
+  // Clear custom reminder date/time when reminder type changes away from "custom"
+  useEffect(() => {
+    if (reminder !== "custom") {
+      setReminderCustomDate("");
+      setReminderCustomTime("");
+    }
+  }, [reminder]);
 
   useEffect(() => {
     if (!showValidation) return;
@@ -133,6 +184,11 @@ export default function TaskFormPanel({
       userTimeZone = "UTC";
     }
 
+    const reminderCustomDatetime =
+      reminder === "custom" && reminderCustomDate && reminderCustomTime
+        ? new Date(`${reminderCustomDate}T${reminderCustomTime}:00`).toISOString()
+        : undefined;
+
     const payload = {
       taskName,
       dueDate: dueDate || undefined,
@@ -145,6 +201,8 @@ export default function TaskFormPanel({
         : status,
       assignedTo: assignedTo || undefined,
       comment: comment || undefined,
+      reminder,
+      reminderCustomDatetime,
       userTimeZone,
     };
 
@@ -224,6 +282,11 @@ export default function TaskFormPanel({
 
   if (!isOpen || !shadowRoot) return null;
 
+  const now = new Date();
+  const todayStr = now.toISOString().split("T")[0];
+  const currentTimeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const isEnabled = isFormValid && !isSaving;
+
   const inputStyle = {
     width: "100%",
     padding: "10px 14px",
@@ -236,6 +299,16 @@ export default function TaskFormPanel({
     boxSizing: "border-box" as const,
     fontFamily:
       "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  };
+
+  const selectStyle = {
+    ...inputStyle,
+    cursor: "pointer",
+    appearance: "none" as const,
+    backgroundImage: `url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 6l4 4 4-4' stroke='${isDark ? "%23a0aec0" : "%236b7280"}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "right 12px center",
+    paddingRight: "40px",
   };
 
   const labelStyle = {
@@ -357,6 +430,7 @@ export default function TaskFormPanel({
                 onChange={setDueDate}
                 isDark={isDark}
                 colors={colors}
+                minDate={todayStr}
                 placeholder="Select date"
               />
               {showValidation && validationErrors.dueDate && (
@@ -379,6 +453,7 @@ export default function TaskFormPanel({
                 disabled={!dueDate}
                 isDark={isDark}
                 colors={colors}
+                minTime={dueDate === todayStr ? currentTimeStr : undefined}
                 placeholder="Select time"
               />
               {showValidation && validationErrors.time && (
@@ -397,19 +472,7 @@ export default function TaskFormPanel({
 
           <div>
             <label style={labelStyle}>Priority</label>
-            <select
-              value={priority}
-              onChange={(e) => setPriority(e.target.value)}
-              style={{
-                ...inputStyle,
-                cursor: "pointer",
-                appearance: "none",
-                backgroundImage: `url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 6l4 4 4-4' stroke='${isDark ? "%23a0aec0" : "%236b7280"}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "no-repeat",
-                backgroundPosition: "right 12px center",
-                paddingRight: "40px",
-              }}
-            >
+            <select value={priority} onChange={(e) => setPriority(e.target.value)} style={selectStyle}>
               <option value="None">None</option>
               <option value="Low">Low</option>
               <option value="Medium">Medium</option>
@@ -420,19 +483,7 @@ export default function TaskFormPanel({
           {!editingTask && (
             <div>
               <label style={labelStyle}>Status</label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                style={{
-                  ...inputStyle,
-                  cursor: "pointer",
-                  appearance: "none",
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 6l4 4 4-4' stroke='${isDark ? "%23a0aec0" : "%236b7280"}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-                  backgroundRepeat: "no-repeat",
-                  backgroundPosition: "right 12px center",
-                  paddingRight: "40px",
-                }}
-              >
+              <select value={status} onChange={(e) => setStatus(e.target.value)} style={selectStyle}>
                 <option value="To do">To do</option>
                 <option value="Completed">Completed</option>
               </select>
@@ -440,20 +491,62 @@ export default function TaskFormPanel({
           )}
 
           <div>
-            <label style={labelStyle}>Assigned to</label>
+            <label style={labelStyle}>Reminder</label>
             <select
-              value={assignedTo}
-              onChange={(e) => setAssignedTo(e.target.value)}
-              style={{
-                ...inputStyle,
-                cursor: "pointer",
-                appearance: "none",
-                backgroundImage: `url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 6l4 4 4-4' stroke='${isDark ? "%23a0aec0" : "%236b7280"}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "no-repeat",
-                backgroundPosition: "right 12px center",
-                paddingRight: "40px",
-              }}
+              value={reminder}
+              onChange={(e) => setReminder(e.target.value)}
+              style={selectStyle}
             >
+              {REMINDER_OPTIONS.map((opt) => {
+                const noDueDateOrTime = opt.key !== "none" && (!dueDate || !time);
+                const pastTime = opt.key !== "none" && opt.key !== "custom" && !noDueDateOrTime
+                  && isReminderDisabled(opt.key, dueDate, time);
+                const disabled = noDueDateOrTime || pastTime;
+                const title = noDueDateOrTime
+                  ? "Set a due date and time first"
+                  : pastTime
+                  ? "This time has already passed"
+                  : "";
+                return (
+                  <option key={opt.key} value={opt.key} disabled={disabled} title={title}>
+                    {opt.label}
+                  </option>
+                );
+              })}
+            </select>
+            {reminder === "custom" && (
+              <div style={{ display: "flex", gap: "12px", marginTop: "10px" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <label style={labelStyle}>Reminder date</label>
+                  <DatePicker
+                    value={reminderCustomDate}
+                    onChange={setReminderCustomDate}
+                    isDark={isDark}
+                    colors={colors}
+                    minDate={todayStr}
+                    maxDate={dueDate || undefined}
+                    placeholder="Select date"
+                  />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <label style={labelStyle}>Reminder time</label>
+                  <TimePicker
+                    value={reminderCustomTime}
+                    onChange={setReminderCustomTime}
+                    disabled={!reminderCustomDate}
+                    isDark={isDark}
+                    colors={colors}
+                    minTime={reminderCustomDate === todayStr ? currentTimeStr : undefined}
+                    placeholder="Select time"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label style={labelStyle}>Assigned to</label>
+            <select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} style={selectStyle}>
               <option value="">Select owner</option>
               {owners.map((owner) => (
                 <option key={owner.id} value={owner.id}>
@@ -532,45 +625,31 @@ export default function TaskFormPanel({
         </button>
         <button
           onClick={handleSave}
-          disabled={isSaving}
+          disabled={!isEnabled}
           style={{
             flex: 1,
             padding: "10px 20px",
-            background:
-              isFormValid && !isSaving
-                ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-                : colors.border,
+            background: isEnabled
+              ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+              : colors.border,
             color: "white",
             border: "none",
             borderRadius: "6px",
-            cursor: isFormValid && !isSaving ? "pointer" : "not-allowed",
+            cursor: isEnabled ? "pointer" : "not-allowed",
             fontSize: "14px",
             fontWeight: 600,
             transition: "all 0.2s",
-            opacity: isFormValid && !isSaving ? 1 : 0.6,
+            opacity: isEnabled ? 1 : 0.6,
           }}
           onMouseEnter={(e) => {
-            if (
-              taskName.trim() &&
-              assignedTo &&
-              !timeError &&
-              (!editingTask || hasChanges())
-            ) {
+            if (isEnabled) {
               e.currentTarget.style.transform = "translateY(-1px)";
-              e.currentTarget.style.boxShadow =
-                "0 4px 12px rgba(102, 126, 234, 0.4)";
+              e.currentTarget.style.boxShadow = "0 4px 12px rgba(102, 126, 234, 0.4)";
             }
           }}
           onMouseLeave={(e) => {
-            if (
-              taskName.trim() &&
-              assignedTo &&
-              !timeError &&
-              (!editingTask || hasChanges())
-            ) {
-              e.currentTarget.style.transform = "translateY(0)";
-              e.currentTarget.style.boxShadow = "none";
-            }
+            e.currentTarget.style.transform = "translateY(0)";
+            e.currentTarget.style.boxShadow = "none";
           }}
         >
           {isSaving ? "Saving..." : editingTask ? "Save Task" : "Create Task"}

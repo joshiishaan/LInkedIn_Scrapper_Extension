@@ -1,8 +1,9 @@
 import { API_BASE_URL, getAuthHeaders } from "./_apiBase";
 
 export const tasksApi = {
-  getTasks: async (contactId: string, userTimeZone?: string) => {
+  getTasks: async (contactId: string, after?: string, userTimeZone?: string) => {
     let url = `${API_BASE_URL}/hubspot/tasks?contactId=${contactId}`;
+    if (after) url += `&after=${encodeURIComponent(after)}`;
     if (userTimeZone) url += `&userTimeZone=${encodeURIComponent(userTimeZone)}`;
     const response = await fetch(url, { headers: await getAuthHeaders() });
     if (!response.ok) {
@@ -21,6 +22,8 @@ export const tasksApi = {
     status: string;
     assignedTo?: string;
     comment?: string;
+    reminder?: string;
+    reminderCustomDatetime?: string;
     contactId?: string;
     userTimeZone?: string;
   }) => {
@@ -32,7 +35,7 @@ export const tasksApi = {
     if (!response.ok) {
       const error = await response.json();
       console.error("API Error:", error);
-      throw new Error("Failed to create task");
+      throw new Error(error?.message || "Failed to create task");
     }
     return response.json();
   },
@@ -47,6 +50,8 @@ export const tasksApi = {
       status: string;
       assignedTo?: string;
       comment?: string;
+      reminder?: string;
+      reminderCustomDatetime?: string;
       userTimeZone?: string;
     },
   ) => {
@@ -58,8 +63,16 @@ export const tasksApi = {
     if (!response.ok) {
       const error = await response.json();
       console.error("API Error:", error);
-      throw new Error("Failed to update task");
+      throw new Error(error?.message || "Failed to update task");
     }
+    return response.json();
+  },
+
+  getAllTasks: async (userTimeZone?: string) => {
+    let url = `${API_BASE_URL}/hubspot/tasks/all`;
+    if (userTimeZone) url += `?userTimeZone=${encodeURIComponent(userTimeZone)}`;
+    const response = await fetch(url, { headers: await getAuthHeaders() });
+    if (!response.ok) throw new Error("Failed to fetch tasks");
     return response.json();
   },
 

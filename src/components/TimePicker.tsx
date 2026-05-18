@@ -16,6 +16,7 @@ interface TimePickerProps {
   isDark: boolean;
   colors: TimePickerColors;
   placeholder?: string;
+  minTime?: string; // "HH:MM" 24h — items before this time are unclickable
 }
 
 function parseTimeValue(v: string): { hour12: number; minute: number; ampm: "AM" | "PM" } {
@@ -47,7 +48,7 @@ function parseTypedTime(text: string): string | null {
   const t = text.trim().toLowerCase().replace(/\./g, "");
   const m12 = t.match(/^(\d{1,2}):(\d{2})\s*(am|pm|a|p)$/);
   if (m12) {
-    let h = parseInt(m12[1]);
+    const h = parseInt(m12[1]);
     const m = parseInt(m12[2]);
     const isPM = m12[3].startsWith("p");
     if (h < 1 || h > 12 || m < 0 || m > 59) return null;
@@ -76,8 +77,22 @@ export default function TimePicker({
   isDark,
   colors,
   placeholder = "HH:MM AM/PM",
+  minTime,
 }: TimePickerProps) {
   const { hour12, minute, ampm } = parseTimeValue(value);
+
+  // minTime helpers
+  const [minH24, minM] = minTime ? minTime.split(":").map(Number) : [-1, -1];
+  const hasMin = minH24 >= 0;
+  function toH24(h12: number, ap: "AM" | "PM"): number {
+    return ap === "PM" ? (h12 % 12) + 12 : h12 % 12;
+  }
+  const isHourDisabled = (h: number, ap: "AM" | "PM") => hasMin && toH24(h, ap) < minH24;
+  const isMinuteDisabled = (m: number) => {
+    if (!hasMin) return false;
+    const selH24 = toH24(hour12, ampm);
+    return selH24 < minH24 || (selH24 === minH24 && m < minM);
+  };
 
   const [isOpen, setIsOpen] = useState(false);
   const [draftText, setDraftText] = useState<string | null>(null);
@@ -179,7 +194,7 @@ export default function TimePicker({
     padding: "0 4px",
   };
 
-  const itemStyle = (active: boolean): React.CSSProperties => ({
+  const itemStyle = (active: boolean, itemDisabled = false): React.CSSProperties => ({
     height: `${ITEM_H}px`,
     minHeight: `${ITEM_H}px`,
     display: "flex",
@@ -190,10 +205,11 @@ export default function TimePicker({
     color: active ? "#fff" : colors.text,
     background: active ? accent : "transparent",
     borderRadius: "8px",
-    cursor: "pointer",
+    cursor: itemDisabled ? "not-allowed" : "pointer",
     transition: "background 0.1s",
     flexShrink: 0,
     letterSpacing: active ? "0.01em" : "normal",
+    opacity: itemDisabled ? 0.25 : 1,
   });
 
   return (
@@ -353,27 +369,30 @@ export default function TimePicker({
             <div style={{ flex: 1, textAlign: "center", fontSize: "10px", fontWeight: 700, color: colors.textSecondary, letterSpacing: "0.06em" }}>MINUTE</div>
           </div>
 
-          {/* Divider line in center of columns for visual "selection zone" */}
+          {/* Columns */}
           <div style={{ display: "flex", gap: "8px", position: "relative" }}>
             {/* Hour column */}
             <div ref={hourColRef} className="hl-tc" style={colStyle}>
               {/* Padding spacer top */}
               <div style={{ height: "83px", flexShrink: 0 }} />
-              {HOURS.map(h => (
-                <div
-                  key={h}
-                  onClick={() => selectHour(h)}
-                  style={itemStyle(hour12 === h)}
-                  onMouseEnter={e => {
-                    if (hour12 !== h) (e.currentTarget as HTMLDivElement).style.background = colors.bgSecondary;
-                  }}
-                  onMouseLeave={e => {
-                    if (hour12 !== h) (e.currentTarget as HTMLDivElement).style.background = "transparent";
-                  }}
-                >
-                  {h}
-                </div>
-              ))}
+              {HOURS.map(h => {
+                const hDisabled = isHourDisabled(h, ampm);
+                return (
+                  <div
+                    key={h}
+                    onClick={() => { if (!hDisabled) selectHour(h); }}
+                    style={itemStyle(hour12 === h, hDisabled)}
+                    onMouseEnter={e => {
+                      if (hour12 !== h && !hDisabled) (e.currentTarget as HTMLDivElement).style.background = colors.bgSecondary;
+                    }}
+                    onMouseLeave={e => {
+                      if (hour12 !== h) (e.currentTarget as HTMLDivElement).style.background = "transparent";
+                    }}
+                  >
+                    {h}
+                  </div>
+                );
+              })}
               {/* Padding spacer bottom */}
               <div style={{ height: "83px", flexShrink: 0 }} />
             </div>
@@ -384,24 +403,49 @@ export default function TimePicker({
             {/* Minute column */}
             <div ref={minColRef} className="hl-tc" style={colStyle}>
               <div style={{ height: "83px", flexShrink: 0 }} />
-              {MINUTES.map(m => (
-                <div
-                  key={m}
-                  onClick={() => selectMinute(m)}
-                  style={itemStyle(minute === m)}
-                  onMouseEnter={e => {
-                    if (minute !== m) (e.currentTarget as HTMLDivElement).style.background = colors.bgSecondary;
-                  }}
-                  onMouseLeave={e => {
-                    if (minute !== m) (e.currentTarget as HTMLDivElement).style.background = "transparent";
-                  }}
-                >
-                  {String(m).padStart(2, "0")}
-                </div>
-              ))}
+              {MINUTES.map(m => {
+                const mDisabled = isMinuteDisabled(m);
+                return (
+                  <div
+                    key={m}
+                    onClick={() => { if (!mDisabled) selectMinute(m); }}
+                    style={itemStyle(minute === m, mDisabled)}
+                    onMouseEnter={e => {
+                      if (minute !== m && !mDisabled) (e.currentTarget as HTMLDivElement).style.background = colors.bgSecondary;
+                    }}
+                    onMouseLeave={e => {
+                      if (minute !== m) (e.currentTarget as HTMLDivElement).style.background = "transparent";
+                    }}
+                  >
+                    {String(m).padStart(2, "0")}
+                  </div>
+                );
+              })}
               <div style={{ height: "83px", flexShrink: 0 }} />
             </div>
           </div>
+
+          {/* Done button */}
+          <button
+            type="button"
+            onClick={() => setIsOpen(false)}
+            style={{
+              marginTop: "12px",
+              width: "100%",
+              padding: "8px 0",
+              background: accent,
+              border: "none",
+              borderRadius: "8px",
+              color: "#fff",
+              fontSize: "13px",
+              fontWeight: 700,
+              cursor: "pointer",
+              letterSpacing: "0.02em",
+              fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            }}
+          >
+            Done
+          </button>
         </div>
       )}
     </div>

@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import NoteCard from "./NoteCard";
+import TaskCard from "./TaskCard";
 
-interface Note {
+interface Task {
   id: string;
-  noteTitle: string;
-  notes: string;
+  taskName: string;
+  dueDate: string | null;
+  time: string | null;
+  priority: string;
+  status: string;
+  assignedTo: string | null;
+  comment: string | null;
   timestamp: string;
+  contactId?: string;
+  contactName?: string;
+  contactCompany?: string;
 }
 
 interface Colors {
@@ -18,51 +26,33 @@ interface Colors {
   hover: string;
 }
 
-interface NoteListPanelProps {
+interface TaskListPanelProps {
   colors: Colors;
   isDark: boolean;
-  notes: Note[];
+  tasks: Task[];
   isLoading: boolean;
-  isLoadingMore?: boolean;
-  hasMore?: boolean;
-  deletingNoteId: string | null;
-  contactName: string;
+  deletingTaskId: string | null;
   headerSlot?: React.ReactNode;
   onClose: () => void;
-  onCreateNote: () => void;
-  onEditNote: (note: Note) => void;
-  onDeleteNote: (id: string) => void;
-  onLoadMore?: () => void;
+  onCreateTask: () => void;
+  onEditTask: (task: Task) => void;
+  onDeleteTask: (id: string) => void;
+  onToggleComplete: (task: Task) => void;
 }
 
-export default function NoteListPanel({
+export default function TaskListPanel({
   colors,
   isDark,
-  notes,
+  tasks,
   isLoading,
-  isLoadingMore = false,
-  hasMore = false,
-  deletingNoteId,
-  contactName,
+  deletingTaskId,
   headerSlot,
   onClose,
-  onCreateNote,
-  onEditNote,
-  onDeleteNote,
-  onLoadMore,
-}: NoteListPanelProps) {
-  // ── Infinite scroll sentinel ──────────────────────────────────────────────
-  const sentinelRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!onLoadMore || !hasMore || isLoadingMore) return;
-    const obs = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) onLoadMore!(); },
-      { threshold: 0.1 },
-    );
-    if (sentinelRef.current) obs.observe(sentinelRef.current);
-    return () => obs.disconnect();
-  }, [onLoadMore, hasMore, isLoadingMore]);
-
+  onCreateTask,
+  onEditTask,
+  onDeleteTask,
+  onToggleComplete,
+}: TaskListPanelProps) {
   // ── Scroll rail — direct DOM approach (no React re-renders during scroll) ─
   const scrollRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -71,8 +61,8 @@ export default function NoteListPanel({
   const counterRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
   const scrollProgressRef = useRef(0);
-  const itemCountRef = useRef(notes.length);
-  useEffect(() => { itemCountRef.current = notes.length; }, [notes.length]);
+  const itemCountRef = useRef(tasks.length);
+  useEffect(() => { itemCountRef.current = tasks.length; }, [tasks.length]);
 
   const [canScroll, setCanScroll] = useState(false);
   const [isAtTop, setIsAtTop] = useState(true);
@@ -104,7 +94,7 @@ export default function NoteListPanel({
   }, []);
 
   const updateScroll = useCallback(() => {
-    if (rafRef.current !== null) return; // already scheduled for this frame
+    if (rafRef.current !== null) return;
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null;
       const el = scrollRef.current;
@@ -146,7 +136,7 @@ export default function NoteListPanel({
       el.removeEventListener("scroll", updateScroll);
       if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
-  }, [updateScroll, notes.length]);
+  }, [updateScroll, tasks.length]);
 
   // Re-apply positions when rail becomes visible (counter mounts on hover)
   useEffect(() => {
@@ -170,7 +160,7 @@ export default function NoteListPanel({
     isDragging.current = true;
     dragStartY.current = e.clientY;
     dragStartScroll.current = scrollRef.current?.scrollTop ?? 0;
-    if (thumbRef.current) thumbRef.current.style.transition = "none"; // no lag during drag
+    if (thumbRef.current) thumbRef.current.style.transition = "none";
 
     const onMove = (ev: MouseEvent) => {
       if (!isDragging.current || !scrollRef.current || !trackRef.current) return;
@@ -202,14 +192,14 @@ export default function NoteListPanel({
       <div style={{ padding: "20px 24px", borderBottom: `1px solid ${colors.border}` }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 600, color: colors.text }}>Notes</h2>
-            {!isLoading && notes.length > 0 && (
+            <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 600, color: colors.text }}>Tasks</h2>
+            {!isLoading && tasks.length > 0 && (
               <span style={{
                 background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
                 color: "white", borderRadius: "12px", padding: "2px 8px",
                 fontSize: "11px", fontWeight: 700, lineHeight: "18px", letterSpacing: "0.02em",
               }}>
-                {notes.length}
+                {tasks.length}
               </span>
             )}
           </div>
@@ -229,17 +219,15 @@ export default function NoteListPanel({
           </button>
         </div>
 
-        {headerSlot ? (
+        {headerSlot && (
           <div style={{ marginTop: "10px" }}>{headerSlot}</div>
-        ) : (
-          <p style={{ margin: "4px 0 0 0", fontSize: "13px", color: colors.textSecondary }}>{contactName}</p>
         )}
       </div>
 
       {/* ── Create button ───────────────────────────────────────────────────── */}
       <div style={{ padding: "16px 24px", borderBottom: `1px solid ${colors.border}` }}>
         <button
-          onClick={onCreateNote}
+          onClick={onCreateTask}
           style={{
             width: "100%", padding: "12px 20px",
             background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
@@ -254,7 +242,7 @@ export default function NoteListPanel({
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M8 3v10M3 8h10" stroke="white" strokeWidth="2" strokeLinecap="round" />
           </svg>
-          Create New Note
+          Create New Task
         </button>
       </div>
 
@@ -279,44 +267,35 @@ export default function NoteListPanel({
                 borderRadius: "50%", margin: "0 auto 16px",
                 animation: "spin 1s linear infinite",
               }} />
-              <p style={{ margin: 0, fontSize: "14px", color: colors.textSecondary }}>Loading notes…</p>
+              <p style={{ margin: 0, fontSize: "14px", color: colors.textSecondary }}>Loading tasks…</p>
             </div>
-          ) : notes.length === 0 ? (
+          ) : tasks.length === 0 ? (
             <div style={{ textAlign: "center", padding: "40px 20px", color: colors.textSecondary }}>
               <svg width="48" height="48" viewBox="0 0 48 48" fill="none" style={{ margin: "0 auto 16px", display: "block" }}>
-                <path d="M8 6h32a2 2 0 0 1 2 2v32a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" stroke={colors.textSecondary} strokeWidth="2" fill="none" />
-                <line x1="14" y1="16" x2="34" y2="16" stroke={colors.textSecondary} strokeWidth="2" />
-                <line x1="14" y1="24" x2="34" y2="24" stroke={colors.textSecondary} strokeWidth="2" />
-                <line x1="14" y1="32" x2="26" y2="32" stroke={colors.textSecondary} strokeWidth="2" />
+                <rect x="8" y="6" width="32" height="36" rx="3" stroke={colors.textSecondary} strokeWidth="2" fill="none" />
+                <path d="M18 14h12M18 22h12M18 30h8" stroke={colors.textSecondary} strokeWidth="2" strokeLinecap="round" />
+                <circle cx="14" cy="14" r="2" fill={colors.textSecondary} />
+                <circle cx="14" cy="22" r="2" fill={colors.textSecondary} />
+                <circle cx="14" cy="30" r="2" fill={colors.textSecondary} />
               </svg>
-              <p style={{ fontSize: "14px", margin: 0 }}>No notes yet</p>
-              <p style={{ fontSize: "13px", margin: "8px 0 0 0" }}>Click "Create New Note" to get started</p>
+              <p style={{ fontSize: "14px", margin: 0 }}>No tasks yet</p>
+              <p style={{ fontSize: "13px", margin: "8px 0 0 0" }}>Click "Create New Task" to get started</p>
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {notes.map((note) => (
-                <NoteCard
-                  key={note.id}
-                  title={note.noteTitle || "Untitled Note"}
-                  content={note.notes || "No content"}
-                  timestamp={new Date(note.timestamp).getTime()}
-                  onClick={() => onEditNote(note)}
-                  onDelete={() => onDeleteNote(note.id)}
-                  isDeleting={deletingNoteId === note.id}
+              {tasks.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  title={task.taskName}
+                  dueDate={task.dueDate ?? undefined}
+                  priority={task.priority as "None" | "Low" | "Medium" | "High"}
+                  status={task.status}
+                  onClick={() => onEditTask(task)}
+                  onDelete={() => onDeleteTask(task.id)}
+                  onToggleComplete={() => onToggleComplete(task)}
+                  isDeleting={deletingTaskId === task.id}
                 />
               ))}
-              <div ref={sentinelRef} style={{ height: "1px" }} />
-              {isLoadingMore && (
-                <div style={{ textAlign: "center", padding: "12px 0", color: colors.textSecondary }}>
-                  <div style={{
-                    width: "24px", height: "24px",
-                    border: `2px solid ${colors.border}`,
-                    borderTop: `2px solid ${colors.link}`,
-                    borderRadius: "50%", margin: "0 auto",
-                    animation: "spin 1s linear infinite",
-                  }} />
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -338,7 +317,6 @@ export default function NoteListPanel({
               zIndex: 10,
             }}
           >
-            {/* Jump to top */}
             <button
               onClick={scrollToTop}
               title="Scroll to top"
@@ -356,7 +334,6 @@ export default function NoteListPanel({
               </svg>
             </button>
 
-            {/* Track + thumb */}
             <div
               ref={trackRef}
               data-scroll-track
@@ -409,7 +386,7 @@ export default function NoteListPanel({
                 }}
               />
 
-              {/* Position counter — floats left of the thumb on hover */}
+              {/* Position counter */}
               <div
                 ref={counterRef}
                 style={{
@@ -427,7 +404,6 @@ export default function NoteListPanel({
               />
             </div>
 
-            {/* Jump to bottom */}
             <button
               onClick={scrollToBottom}
               title="Scroll to bottom"
