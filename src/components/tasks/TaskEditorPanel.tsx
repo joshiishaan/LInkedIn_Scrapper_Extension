@@ -1,6 +1,6 @@
 import { useEffect } from "react";
-import DatePicker from "./DatePicker";
-import TimePicker from "./TimePicker";
+import DatePicker from "../shared/DatePicker";
+import TimePicker from "../shared/TimePicker";
 
 const REMINDER_OPTIONS = [
   { key: "none",    label: "None" },

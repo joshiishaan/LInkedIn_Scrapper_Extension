@@ -1,11 +1,12 @@
 import { createPortal } from "react-dom";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useTheme } from "../context/ThemeContext";
+import { useTheme } from "../../context/ThemeContext";
 import TaskCard from "./TaskCard";
 import TaskFormPanel from "./TaskFormPanel";
-import DeleteConfirmDialog from "./DeleteConfirmDialog";
-import { tasksApi } from "../services/api";
-import { useShadowPortal } from "../hooks/useShadowPortal";
+import DeleteConfirmDialog from "../shared/DeleteConfirmDialog";
+import { tasksApi } from "../../services/api";
+import { useShadowPortal } from "../../hooks/useShadowPortal";
+import { useToast } from "../../hooks/useToast";
 
 interface Task {
   id: string;
@@ -54,6 +55,7 @@ export default function TaskDashboardPanel({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [showFormPanel, setShowFormPanel] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -184,6 +186,8 @@ export default function TaskDashboardPanel({
 
   // ── Shadow portal ─────────────────────────────────────────────────────────
   const shadowRoot = useShadowPortal(isOpen);
+  const { toast, showToast } = useToast();
+  const toastShadowRoot = useShadowPortal(toast.show);
 
   useEffect(() => {
     if (isOpen && hubspotContactId) loadTasks();
@@ -194,6 +198,7 @@ export default function TaskDashboardPanel({
     if (!hubspotContactId) return;
     setIsLoading(true);
     setNextCursor(null);
+    setLoadError(null);
     try {
       let tz = "UTC";
       try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { tz = "UTC"; }
@@ -203,8 +208,9 @@ export default function TaskDashboardPanel({
       setHasMore(hm);
       setNextCursor(nc);
       onTasksCountChange?.(fetched.length);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to load tasks:", err);
+      setLoadError(err?.message || "Failed to load tasks. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -221,8 +227,9 @@ export default function TaskDashboardPanel({
       setTasks((prev) => [...prev, ...more]);
       setHasMore(hm);
       setNextCursor(nc);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to load more tasks:", err);
+      setLoadError(err?.message || "Failed to load more tasks.");
     } finally {
       setIsLoadingMore(false);
     }
@@ -257,7 +264,7 @@ export default function TaskDashboardPanel({
     } catch (err) {
       console.error("Failed to toggle task:", err);
       setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: task.status } : t)));
-      alert("Failed to update task");
+      showToast(err instanceof Error ? err.message : "Failed to update task", "error");
     }
   };
 
@@ -287,7 +294,7 @@ export default function TaskDashboardPanel({
       setTasks((prev) => { const next = prev.filter((t) => t.id !== taskId); onTasksCountChange?.(next.length); return next; });
     } catch (err) {
       console.error("Failed to delete task:", err);
-      alert("Failed to delete task");
+      showToast(err instanceof Error ? err.message : "Failed to delete task", "error");
     } finally {
       setDeletingTaskId(null);
     }
@@ -386,6 +393,11 @@ export default function TaskDashboardPanel({
                     animation: "spin 1s linear infinite",
                   }} />
                   <p style={{ margin: 0, fontSize: "14px", color: colors.textSecondary }}>Loading tasks…</p>
+                </div>
+              ) : loadError ? (
+                <div style={{ textAlign: "center", padding: "24px 20px", color: "#e53e3e" }}>
+                  <p style={{ fontSize: "14px", margin: "0 0 8px 0" }}>⚠ {loadError}</p>
+                  <button onClick={loadTasks} style={{ fontSize: 12, padding: "4px 12px", cursor: "pointer" }}>Retry</button>
                 </div>
               ) : tasks.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "40px 20px", color: colors.textSecondary }}>
@@ -550,11 +562,41 @@ export default function TaskDashboardPanel({
     </>
   );
 
-  return createPortal(
+  return (
     <>
-      <style>{`* { box-sizing: border-box; } @keyframes spin { to { transform: rotate(360deg); } } *::-webkit-scrollbar { display: none; }`}</style>
-      {panelContent}
-    </>,
-    shadowRoot,
+      {createPortal(
+        <>
+          <style>{`* { box-sizing: border-box; } @keyframes spin { to { transform: rotate(360deg); } } *::-webkit-scrollbar { display: none; }`}</style>
+          {panelContent}
+        </>,
+        shadowRoot,
+      )}
+      {toast.show &&
+        toastShadowRoot &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              top: "20px",
+              right: "20px",
+              background: toast.type === "success" ? "#10b981" : "#ef4444",
+              color: "white",
+              padding: "12px 20px",
+              borderRadius: "8px",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+              fontSize: "14px",
+              fontWeight: 500,
+              zIndex: 2147483647,
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              pointerEvents: "auto",
+            }}
+          >
+            {toast.message}
+          </div>,
+          toastShadowRoot,
+        )}
+    </>
   );
 }

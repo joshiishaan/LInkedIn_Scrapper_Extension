@@ -1,4 +1,4 @@
-import { API_BASE_URL, getAuthHeaders } from "./_apiBase";
+import { API_BASE_URL, getAuthHeaders, throwApiError } from "../../_apiBase";
 
 export const notesApi = {
   getNotes: async (contactId: string, after?: string, limit = 20) => {
@@ -8,7 +8,7 @@ export const notesApi = {
       `${API_BASE_URL}/hubspot/notes?${params}`,
       { headers: await getAuthHeaders() },
     );
-    if (!response.ok) throw new Error("Failed to fetch notes");
+    if (!response.ok) await throwApiError(response, "Failed to fetch notes");
     return response.json();
   },
 
@@ -17,7 +17,7 @@ export const notesApi = {
       `${API_BASE_URL}/hubspot/notes/all`,
       { headers: await getAuthHeaders() },
     );
-    if (!response.ok) throw new Error("Failed to fetch notes");
+    if (!response.ok) await throwApiError(response, "Failed to fetch notes");
     return response.json();
   },
 
@@ -31,7 +31,7 @@ export const notesApi = {
       headers: await getAuthHeaders(),
       body: JSON.stringify(payload),
     });
-    if (!response.ok) throw new Error("Failed to create note");
+    if (!response.ok) await throwApiError(response, "Failed to create note");
     return response.json();
   },
 
@@ -44,7 +44,7 @@ export const notesApi = {
       headers: await getAuthHeaders(),
       body: JSON.stringify(payload),
     });
-    if (!response.ok) throw new Error("Failed to update note");
+    if (!response.ok) await throwApiError(response, "Failed to update note");
     return response.json();
   },
 
@@ -53,7 +53,7 @@ export const notesApi = {
       method: "DELETE",
       headers: await getAuthHeaders(),
     });
-    if (!response.ok) throw new Error("Failed to delete note");
+    if (!response.ok) await throwApiError(response, "Failed to delete note");
     return response.json();
   },
 };

@@ -352,21 +352,46 @@ body {
 
 .password-field {
   position: relative;
-  display: flex;
-  align-items: center;
+  margin-bottom: 12px;
 }
 
 .password-field input {
   width: 100%;
+  margin-bottom: 0;
   padding-right: 3rem;
 }
 
 .toggle-password {
   position: absolute;
-  right: 0.75rem;
+  right: 0.5rem;
+  top: 0;
+  bottom: 0;
   background: none;
   border: none;
+  padding: 0 6px;
   cursor: pointer;
-  font-size: 0.85rem;
-  color: #555;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+
+.toggle-password:hover {
+  transform: scale(1.15);
+}
+
+.toggle-password:active {
+  transform: scale(0.92);
+}
+
+.eye-icon {
+  display: flex;
+  align-items: center;
+  animation: eyeFlip 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes eyeFlip {
+  0%   { opacity: 0; transform: scale(0.5) rotateX(80deg); }
+  100% { opacity: 1; transform: scale(1)   rotateX(0deg); }
 }

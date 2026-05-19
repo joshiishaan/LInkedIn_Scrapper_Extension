@@ -4,12 +4,7 @@ export { parseProfileData, parseCompanyData } from "./linkedinParsers";
 
 // --- CSRF helpers ---
 
-function getCsrfToken(): string {
-  const match = document.cookie.match(/JSESSIONID="([^"]+)"/);
-  return match ? match[1] : "";
-}
-
-// More robust: handles both quoted and unquoted JSESSIONID
+// Handles both quoted and unquoted JSESSIONID
 function getCsrfTokenFromCookies(): string {
   const cookie = document.cookie || "";
   const quoted = cookie.match(/JSESSIONID="([^"]+)"/);
@@ -42,7 +37,7 @@ export async function fetchLinkedInProfile(profileId: string) {
     `https://www.linkedin.com/voyager/api/identity/dash/profiles?q=memberIdentity&memberIdentity=${profileId}&decorationId=com.linkedin.voyager.dash.deco.identity.profile.FullProfileWithEntities-109`,
     {
       headers: {
-        "csrf-token": getCsrfToken(),
+        "csrf-token": getCsrfTokenFromCookies(),
         "x-restli-protocol-version": "2.0.0",
       },
       credentials: "include",
@@ -97,7 +92,7 @@ export async function fetchLinkedInCompany(companyId: string) {
     `https://www.linkedin.com/voyager/api/organization/companies?decorationId=com.linkedin.voyager.deco.organization.web.WebFullCompanyMain-12&q=universalName&universalName=${companyId}`,
     {
       headers: {
-        "csrf-token": getCsrfToken(),
+        "csrf-token": getCsrfTokenFromCookies(),
         "x-restli-protocol-version": "2.0.0",
         accept: "application/vnd.linkedin.normalized+json+2.1",
       },

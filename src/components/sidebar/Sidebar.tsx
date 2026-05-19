@@ -1,16 +1,12 @@
 import { createPortal } from "react-dom";
 import { useState } from "react";
-import { useTheme } from "../context/ThemeContext";
-import { useShadowPortal } from "../hooks/useShadowPortal";
+import { useTheme } from "../../context/ThemeContext";
+import { useShadowPortal } from "../../hooks/useShadowPortal";
 import ProfilePanel from "./ProfilePanel";
-import NotesInfoPanel from "./NotesInfoPanel";
-import TasksInfoPanel from "./TasksInfoPanel";
+import NotesInfoPanel from "../notes/NotesInfoPanel";
+import TasksInfoPanel from "../tasks/TasksInfoPanel";
 
-interface SidebarProps {
-  showFetchProfile?: boolean;
-}
-
-export default function Sidebar({ showFetchProfile = false }: SidebarProps) {
+export default function Sidebar() {
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const [activePanel, setActivePanel] = useState<string | null>(null);
@@ -30,15 +26,6 @@ export default function Sidebar({ showFetchProfile = false }: SidebarProps) {
     textSecondary: isDark ? "#a0aec0" : "#6b7280",
     hover: isDark ? "#2d3748" : "#f3f4f6",
     active: isDark ? "#4c51bf" : "#667eea",
-  };
-
-  const handleFetchProfile = async () => {
-    try {
-      const result = await chrome.storage.local.get(["user"]);
-      console.log("Fetching profile for user:", result.user);
-    } catch (err) {
-      console.error("Failed to fetch profile:", err);
-    }
   };
 
   if (!shadowRoot) return null;
@@ -65,24 +52,6 @@ export default function Sidebar({ showFetchProfile = false }: SidebarProps) {
       ),
       label: "Profile",
       onClick: () => setActivePanel("profile"),
-      show: true,
-    },
-    {
-      id: "fetch",
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-          <path
-            d="M4 12v4a2 2 0 002 2h8a2 2 0 002-2v-4M10 2v10m0 0l-3-3m3 3l3-3"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      ),
-      label: "Fetch Profile",
-      onClick: handleFetchProfile,
-      show: showFetchProfile,
     },
     {
       id: "notes",
@@ -218,10 +187,8 @@ export default function Sidebar({ showFetchProfile = false }: SidebarProps) {
             }}
           />
 
-          {buttons
-            .filter((btn) => btn.show)
-            .map((btn) => (
-              <div key={btn.id} style={{ position: "relative" }}>
+          {buttons.map((btn) => (
+            <div key={btn.id} style={{ position: "relative" }}>
                 <button
                   onClick={btn.onClick}
                   onMouseEnter={() => setHoveredBtn(btn.id)}

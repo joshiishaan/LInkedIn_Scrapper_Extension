@@ -8,10 +8,11 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { ThemeProvider } from "../context/ThemeContext";
-import ProfileCard from "../components/ProfileCard";
-import { MessageSyncButton } from "../components/MessageSyncButton";
-import Sidebar from "../components/Sidebar";
+import ProfileCard from "../components/profile-card/ProfileCard";
+import { MessageSyncButton } from "../components/messaging/MessageSyncButton";
+import Sidebar from "../components/sidebar/Sidebar";
 import { useLinkedInProfileInterceptor } from "../hooks/useLinkedInProfileInterceptor";
+import { ErrorBoundary } from "../components/shared/ErrorBoundary";
 
 // eslint-disable-next-line react-refresh/only-export-components
 function HubLeadRoot() {
@@ -35,7 +36,9 @@ function HubLeadRoot() {
   function renderProfileCard(container: HTMLElement) {
     ReactDOM.createRoot(container).render(
       <ThemeProvider>
-        <ProfileCard />
+        <ErrorBoundary>
+          <ProfileCard />
+        </ErrorBoundary>
       </ThemeProvider>,
     );
   }
@@ -48,18 +51,22 @@ function HubLeadRoot() {
 
     messageRoot.render(
       <ThemeProvider>
-        <MessageSyncButton />
+        <ErrorBoundary>
+          <MessageSyncButton />
+        </ErrorBoundary>
       </ThemeProvider>,
     );
   }
 
-  function renderSidebar(container: HTMLElement, showFetchProfile: boolean) {
+  function renderSidebar(container: HTMLElement) {
     if (!sidebarRoot) {
       sidebarRoot = ReactDOM.createRoot(container);
     }
     sidebarRoot.render(
       <ThemeProvider>
-        <Sidebar showFetchProfile={showFetchProfile} />
+        <ErrorBoundary>
+          <Sidebar />
+        </ErrorBoundary>
       </ThemeProvider>,
     );
   }
@@ -87,8 +94,8 @@ function HubLeadRoot() {
             if (messageRoot) {
               try {
                 messageRoot.unmount();
-              } catch {
-                // ignore
+              } catch (e) {
+                console.warn("[HubLead] unmount error:", e);
               }
               messageRoot = null;
             }
@@ -127,8 +134,12 @@ function HubLeadRoot() {
   // Watch for target element to appear in DOM
   function watchForProfileTarget(selector: string) {
     const observer = new MutationObserver(() => {
-      const target = document.querySelector(selector);
-      if (target) insertProfileCard(target);
+      try {
+        const target = document.querySelector(selector);
+        if (target) insertProfileCard(target);
+      } catch (err) {
+        console.error("[HubLead] MutationObserver error (profile target):", err);
+      }
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
@@ -159,53 +170,62 @@ function HubLeadRoot() {
   // --- Messaging page injection (/messaging) ---
 
   function findMessageInputRoot(): HTMLElement | null {
-    // Scope to the active conversation thread when possible.
+    const isOnThreadUrl = /\/messaging(\/thread\/|\/)\S/.test(window.location.pathname);
+
+    // Try a broad list of thread-container selectors covering old and new
+    // LinkedIn messenger layouts.
     const threadContainer =
       document.querySelector<HTMLElement>("[id^='message-thread-']") ??
-      document.querySelector<HTMLElement>(".msg-convo-wrapper");
+      document.querySelector<HTMLElement>(".msg-convo-wrapper") ??
+      document.querySelector<HTMLElement>("[class*='msg-thread']") ??
+      document.querySelector<HTMLElement>("[class*='thread-detail']") ??
+      document.querySelector<HTMLElement>(".scaffold-layout__main");
 
-    const scope: ParentNode = threadContainer ?? document;
-
-    // Broadened selectors. LinkedIn has rotated class names; accept any
-    // composer-shaped element. Order matters — most specific first so we
-    // prefer a real composer over an unrelated textarea.
+    // LinkedIn has used contenteditable="true", contenteditable="",
+    // and contenteditable="plaintext-only" across UI versions.
+    // Match any non-false value using the attribute-presence form [contenteditable].
     const candidateSelector = [
-      '.msg-form__contenteditable[contenteditable="true"]',
-      '.msg-form-v2__contenteditable[contenteditable="true"]',
-      '[class*="msg-form"][contenteditable="true"]',
-      'div[contenteditable="true"][role="textbox"]',
-      'textarea',
+      ".msg-form__contenteditable[contenteditable]",
+      ".msg-form-v2__contenteditable[contenteditable]",
+      '[class*="msg-form"][contenteditable]',
+      '[contenteditable][role="textbox"]',
+      '[role="textbox"]',
+      "textarea",
     ].join(", ");
 
-    const candidates = Array.from(
+    // Scope to thread container when available; fall back to full document
+    // only on confirmed thread URLs (the URL itself rules out left-panel hits).
+    const scope: ParentNode =
+      threadContainer ?? (isOnThreadUrl ? document : null!);
+    if (!scope) return null;
+
+    const allCandidates = Array.from(
       scope.querySelectorAll<HTMLElement>(candidateSelector),
     );
 
-    if (candidates.length === 0) {
-      // One-line DOM probe so each poll tick reports what's actually in
-      // the page when no candidate matches. Helps update selectors fast.
-      // const msgFormEls = document.querySelectorAll('[class*="msg-form" i]');
-      // const editableEls = document.querySelectorAll('[contenteditable="true"]');
-      // console.log("[Scrapper Debug] findMessageInputRoot: no candidates", {
-      //   threadContainer: threadContainer?.id ?? null,
-      //   threadContainerClass: threadContainer?.className ?? null,
-      //   msgFormCount: msgFormEls.length,
-      //   msgFormSample: Array.from(msgFormEls)
-      //     .slice(0, 5)
-      //     .map((e) => (e as HTMLElement).className),
-      //   editableCount: editableEls.length,
-      //   editableSample: Array.from(editableEls)
-      //     .slice(0, 5)
-      //     .map((e) => (e as HTMLElement).className),
-      // });
-      return null;
-    }
+    if (allCandidates.length === 0) return null;
+
+    // When scoped to the full document, exclude elements that live inside
+    // the left-panel conversation list / search area.
+    const LEFT_PANEL_EXCLUSIONS = [
+      '[aria-label*="Search"]',
+      '[class*="msg-conversations-container"]',
+      '[class*="messaging-sidebar"]',
+      '[class*="conversation-list"]',
+      "[data-control-name='compose_message']",
+    ].join(", ");
+
+    const candidates = allCandidates.filter(
+      (el) => !el.closest(LEFT_PANEL_EXCLUSIONS),
+    );
+
+    const pool = candidates.length > 0 ? candidates : allCandidates;
 
     const visibleEditor =
-      candidates.find((el) => {
+      pool.find((el) => {
         const rect = el.getBoundingClientRect();
         return el.offsetParent !== null && rect.width > 0 && rect.height > 0;
-      }) ?? candidates[0];
+      }) ?? pool[0];
 
     const form = visibleEditor.closest("form") as HTMLElement | null;
     return (
@@ -228,11 +248,6 @@ function HubLeadRoot() {
     }
 
     const inputRoot = findMessageInputRoot();
-    // console.log("[Scrapper Debug] performInjection", {
-    //   url: window.location.href,
-    //   formFound: !!inputRoot,
-    //   hasParent: !!inputRoot?.parentElement,
-    // });
     if (!inputRoot || !inputRoot.parentElement) return false;
 
     const hostParent = inputRoot.parentElement;
@@ -245,13 +260,6 @@ function HubLeadRoot() {
     container.style.pointerEvents = "auto";
 
     hostParent.insertBefore(container, inputRoot);
-
-    console.log("[Scrapper Debug] Injecting overlay", {
-      href: window.location.href,
-      inputRoot,
-      hostParent,
-    });
-
     renderMessageButton(container);
     watchContainerRemoval(container);
     return true;
@@ -268,23 +276,27 @@ function HubLeadRoot() {
     // console.log("[Scrapper Debug] composer observer armed");
 
     composerArrivalObserver = new MutationObserver(() => {
-      // console.log(
-      //   "[Scrapper Debug] composer observer callback invoked",
-      // );
-      if (!window.location.href.includes("/messaging")) {
-        disarmComposerObserver();
-        return;
+      try {
+        // console.log(
+        //   "[Scrapper Debug] composer observer callback invoked",
+        // );
+        if (!window.location.href.includes("/messaging")) {
+          disarmComposerObserver();
+          return;
+        }
+        const overlayPresent = !!document.getElementById(
+          "linkedin-extension-message-sync-overlay",
+        );
+        if (overlayPresent) return;
+        // const formFound = !!findMessageInputRoot();
+        // console.log("[Scrapper Debug] composer observer fired", {
+        //   formFound,
+        //   overlayPresent,
+        // });
+        performInjection();
+      } catch (err) {
+        console.error("[HubLead] MutationObserver error (composer):", err);
       }
-      const overlayPresent = !!document.getElementById(
-        "linkedin-extension-message-sync-overlay",
-      );
-      if (overlayPresent) return;
-      // const formFound = !!findMessageInputRoot();
-      // console.log("[Scrapper Debug] composer observer fired", {
-      //   formFound,
-      //   overlayPresent,
-      // });
-      performInjection();
     });
 
     composerArrivalObserver.observe(document, {
@@ -357,7 +369,6 @@ function HubLeadRoot() {
   }
 
   function initSidebarInjection() {
-    const showFetchProfile = window.location.href.includes("/messaging");
     let container = document.getElementById("linkedin-extension-sidebar");
 
     if (!container) {
@@ -365,7 +376,7 @@ function HubLeadRoot() {
       container.id = "linkedin-extension-sidebar";
       document.body.appendChild(container);
     }
-    renderSidebar(container, showFetchProfile);
+    renderSidebar(container);
   }
 
   // --- SPA URL change handling ---
@@ -443,29 +454,33 @@ function HubLeadRoot() {
   }, 500);
 
   const urlObserver = new MutationObserver(() => {
-    if (location.href !== currentUrl) {
-      handleUrlChange();
-      return;
-    }
-    if (window.location.href.includes("/messaging")) {
-      if (healthCheckTimer) clearTimeout(healthCheckTimer);
-      healthCheckTimer = setTimeout(() => {
-        healthCheckTimer = null;
-        if (
-          !document.getElementById("linkedin-extension-message-sync-overlay") &&
-          !isInjecting
-        ) {
-          if (messageRoot) {
-            try {
-              messageRoot.unmount();
-            } catch {
-              // ignore
+    try {
+      if (location.href !== currentUrl) {
+        handleUrlChange();
+        return;
+      }
+      if (window.location.href.includes("/messaging")) {
+        if (healthCheckTimer) clearTimeout(healthCheckTimer);
+        healthCheckTimer = setTimeout(() => {
+          healthCheckTimer = null;
+          if (
+            !document.getElementById("linkedin-extension-message-sync-overlay") &&
+            !isInjecting
+          ) {
+            if (messageRoot) {
+              try {
+                messageRoot.unmount();
+              } catch {
+                // ignore
+              }
+              messageRoot = null;
             }
-            messageRoot = null;
+            initMessagingInjection();
           }
-          initMessagingInjection();
-        }
-      }, 500);
+        }, 500);
+      }
+    } catch (err) {
+      console.error("[HubLead] MutationObserver error (url observer):", err);
     }
   });
 
@@ -484,6 +499,12 @@ function HubLeadRoot() {
       ReactDOM.createRoot(container).render(<HubLeadRoot />);
     }
   })();
+
+  // Catch any unhandled promise rejections in the content script context
+  window.addEventListener("unhandledrejection", (event) => {
+    console.error("[HubLead] Unhandled promise rejection:", event.reason);
+    event.preventDefault();
+  });
 
   // Initial run
   initProfileInjection();

@@ -1,11 +1,12 @@
 import { createPortal } from "react-dom";
 import { useState, useEffect, useRef } from "react";
-import { useTheme } from "../context/ThemeContext";
-import { useShadowPortal } from "../hooks/useShadowPortal";
-import { tasksApi, hubspotApi } from "../services/api";
+import { useTheme } from "../../context/ThemeContext";
+import { useShadowPortal } from "../../hooks/useShadowPortal";
+import { useToast } from "../../hooks/useToast";
+import { tasksApi, hubspotApi } from "../../services/api";
 import TaskListPanel from "./TaskListPanel";
 import TaskEditorPanel from "./TaskEditorPanel";
-import DeleteConfirmDialog from "./DeleteConfirmDialog";
+import DeleteConfirmDialog from "../shared/DeleteConfirmDialog";
 
 interface Task {
   id: string;
@@ -39,6 +40,8 @@ export default function TasksInfoPanel({ onClose }: TasksInfoPanelProps) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const shadowRoot = useShadowPortal(true);
+  const { toast, showToast } = useToast();
+  const toastShadowRoot = useShadowPortal(toast.show);
 
   const colors = {
     bg: isDark ? "#1a202c" : "#ffffff",
@@ -336,8 +339,8 @@ export default function TasksInfoPanel({ onClose }: TasksInfoPanelProps) {
       setShowEditor(false);
       setEditingTask(null);
       setEditingContact(null);
-    } catch {
-      alert("Failed to save task");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to save task", "error");
     } finally {
       setIsSaving(false);
     }
@@ -367,12 +370,12 @@ export default function TasksInfoPanel({ onClose }: TasksInfoPanelProps) {
         comment: task.comment || undefined,
         userTimeZone,
       });
-    } catch {
+    } catch (err) {
       // Revert on failure
       setAllTasks((prev) =>
         prev.map((t) => (t.id === task.id ? { ...t, status: task.status } : t)),
       );
-      alert("Failed to update task status");
+      showToast(err instanceof Error ? err.message : "Failed to update task status", "error");
     }
   };
 
@@ -387,8 +390,8 @@ export default function TasksInfoPanel({ onClose }: TasksInfoPanelProps) {
     try {
       await tasksApi.deleteTask(id);
       setAllTasks((prev) => prev.filter((t) => t.id !== id));
-    } catch {
-      alert("Failed to delete task");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to delete task", "error");
     } finally {
       setDeletingTaskId(null);
     }
@@ -573,11 +576,30 @@ export default function TasksInfoPanel({ onClose }: TasksInfoPanelProps) {
     </>
   );
 
-  return createPortal(
+  const panelPortal = createPortal(
     <>
       <style>{`* { box-sizing: border-box; } @keyframes spin { to { transform: rotate(360deg); } } @keyframes slideInRight { from { transform: translateX(420px); } to { transform: translateX(0); } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } *::-webkit-scrollbar { display: none; }`}</style>
       {panelContent}
     </>,
     shadowRoot,
   );
+
+  const toastPortal = toastShadowRoot && toast.show
+    ? createPortal(
+        <div style={{
+          position: "fixed", top: "20px", right: "20px", zIndex: 2147483647,
+          background: toast.type === "success" ? "#10b981" : "#ef4444",
+          color: "#fff", padding: "10px 14px", borderRadius: "10px",
+          boxShadow: isDark ? "0 10px 30px rgba(0,0,0,0.55)" : "0 10px 30px rgba(0,0,0,0.18)",
+          fontSize: "13px", fontWeight: 600,
+          fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+          maxWidth: "320px",
+        }}>
+          {toast.message}
+        </div>,
+        toastShadowRoot,
+      )
+    : null;
+
+  return <>{panelPortal}{toastPortal}</>;
 }

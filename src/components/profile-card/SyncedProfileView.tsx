@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from "react";
-import { hubspotApi } from "../services/api";
-import { useTheme } from "../context/ThemeContext";
-import { notesApi, tasksApi } from "../services/api";
-import TaskDashboardPanel from "./TaskDashboardPanel";
-import NotesPanel from "./NotesPanel";
+import { hubspotApi } from "../../services/api";
+import { useTheme } from "../../context/ThemeContext";
+import { notesApi, tasksApi } from "../../services/api";
+import TaskDashboardPanel from "../tasks/TaskDashboardPanel";
+import NotesPanel from "../notes/NotesPanel";
 import { createPortal } from "react-dom";
-import { useShadowPortal } from "../hooks/useShadowPortal";
+import { useShadowPortal } from "../../hooks/useShadowPortal";
+import { useToast } from "../../hooks/useToast";
 
 interface Props {
   contactName: string;
@@ -83,16 +84,7 @@ export default function SyncedProfileView({
   const [tasksCount, setTasksCount] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
   const [updating, setUpdating] = useState(false);
-  const [toast, setToast] = useState<{
-    show: boolean;
-    message: string;
-    type: "success" | "error";
-  }>({
-    show: false,
-    message: "",
-    type: "success",
-  });
-
+  const { toast, showToast } = useToast();
   const toastShadowRoot = useShadowPortal(toast.show);
   const [ownerOptions, setOwnerOptions] = useState<
     Array<{ label: string; value: string }>
@@ -397,15 +389,7 @@ export default function SyncedProfileView({
 
   const handleUpdateCRM = async () => {
     if (!hasCrmChanges) {
-      setToast({
-        show: true,
-        message: "Nothing to update.",
-        type: "error",
-      });
-      setTimeout(
-        () => setToast({ show: false, message: "", type: "error" }),
-        3000,
-      );
+      showToast("Nothing to update.", "error");
       return;
     }
 
@@ -424,11 +408,7 @@ export default function SyncedProfileView({
       };
 
       await hubspotApi.updateContact(payload, username);
-      setToast({
-        show: true,
-        message: "CRM updated successfully!",
-        type: "success",
-      });
+      showToast("CRM updated successfully!", "success");
       setShowMenu(false);
       setInitialCrmState({
         ownerId: selectedOwner.value,
@@ -439,22 +419,9 @@ export default function SyncedProfileView({
         email: editableEmail,
         mobile: editableMobile,
       });
-
-      setTimeout(
-        () => setToast({ show: false, message: "", type: "success" }),
-        3000,
-      );
     } catch (err) {
       console.error("Failed to update CRM:", err);
-      setToast({
-        show: true,
-        message: "Failed to update CRM",
-        type: "error",
-      });
-      setTimeout(
-        () => setToast({ show: false, message: "", type: "error" }),
-        3000,
-      );
+      showToast(err instanceof Error ? err.message : "Failed to update CRM", "error");
     } finally {
       setUpdating(false);
     }

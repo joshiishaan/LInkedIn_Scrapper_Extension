@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { useTheme } from "../context/ThemeContext";
-import { tasksApi } from "../services/api";
-import { useShadowPortal } from "../hooks/useShadowPortal";
+import { useTheme } from "../../context/ThemeContext";
+import { tasksApi } from "../../services/api";
+import { useShadowPortal } from "../../hooks/useShadowPortal";
+import { useToast } from "../../hooks/useToast";
 import { createPortal } from "react-dom";
-import DatePicker from "./DatePicker";
-import TimePicker from "./TimePicker";
+import DatePicker from "../shared/DatePicker";
+import TimePicker from "../shared/TimePicker";
 
 const REMINDER_OPTIONS = [
   { key: "none",    label: "None" },
@@ -94,6 +95,8 @@ export default function TaskFormPanel({
 
   // Creating Shadow DOM portal to render the form outside of LinkedIn's React tree and avoid CSS conflicts
   const shadowRoot = useShadowPortal(isOpen);
+  const { toast, showToast } = useToast();
+  const toastShadowRoot = useShadowPortal(toast.show);
 
   useEffect(() => {
     if (editingTask) {
@@ -243,7 +246,7 @@ export default function TaskFormPanel({
       }
     } catch (err) {
       console.error("Failed to save task:", err);
-      alert("Failed to save task");
+      showToast(err instanceof Error ? err.message : "Failed to save task", "error");
     } finally {
       setIsSaving(false);
     }
@@ -319,7 +322,7 @@ export default function TaskFormPanel({
     marginBottom: "6px",
   };
 
-  return createPortal(
+  const panelPortal = createPortal(
     <div
       style={{
         position: "fixed",
@@ -658,5 +661,37 @@ export default function TaskFormPanel({
       <style>{`* { box-sizing: border-box; }`}</style>
     </div>,
     shadowRoot,
+  );
+
+  return (
+    <>
+      {panelPortal}
+      {toast.show &&
+        toastShadowRoot &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              top: "20px",
+              right: "20px",
+              background: toast.type === "success" ? "#10b981" : "#ef4444",
+              color: "white",
+              padding: "12px 20px",
+              borderRadius: "8px",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+              fontSize: "14px",
+              fontWeight: 500,
+              zIndex: 2147483647,
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              pointerEvents: "auto",
+            }}
+          >
+            {toast.message}
+          </div>,
+          toastShadowRoot,
+        )}
+    </>
   );
 }

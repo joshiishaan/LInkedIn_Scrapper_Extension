@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { useLinkedInMessageSync } from "../hooks/useLinkedInMessageSync";
-import { useTheme } from "../context/ThemeContext";
-
-const TOAST_DURATION_MS = 3000;
+import { useLinkedInMessageSync } from "../../hooks/useLinkedInMessageSync";
+import { useTheme } from "../../context/ThemeContext";
+import { useToast } from "../../hooks/useToast";
 
 // type MessageSyncStatus = {
 //   contactExists: boolean;
@@ -22,6 +21,7 @@ export function MessageSyncButton() {
     syncMessagesToServer,
     // checkCurrentConversationMessageSync,
     isButtonDisabled,
+    fetchError,
   } = useLinkedInMessageSync();
 
   const [synced, setSynced] = useState(false);
@@ -30,11 +30,7 @@ export function MessageSyncButton() {
   // const [checkingStatus, setCheckingStatus] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
-  const [toast, setToast] = useState<{
-    show: boolean;
-    message: string;
-    type: "success" | "error";
-  }>({ show: false, message: "", type: "success" });
+  const { toast, showToast } = useToast();
 
   // The conversationKey for which `status` is currently valid
   // const statusKeyRef = useRef<string | null>(null);
@@ -71,7 +67,9 @@ export function MessageSyncButton() {
   }, []);
 
   const handleLoginClick = () => {
-    chrome.runtime.sendMessage({ action: "openPopup" });
+    chrome.runtime.sendMessage({ action: "openPopup" }).catch((err: unknown) => {
+      console.error("[HubLead] sendMessage failed:", err);
+    });
   };
 
   // Reset synced state when new messages are detected (isButtonDisabled flips back to false)
@@ -165,14 +163,11 @@ export function MessageSyncButton() {
   //   }
   // }, [status, messages]);
 
-  // auto-dismiss toast
+  // Show fetch errors as an error toast
   useEffect(() => {
-    if (!toast.show) return;
-    const t = window.setTimeout(() => {
-      setToast((prev) => ({ ...prev, show: false }));
-    }, TOAST_DURATION_MS);
-    return () => window.clearTimeout(t);
-  }, [toast.show]);
+    if (!fetchError) return;
+    showToast(fetchError, "error");
+  }, [fetchError]);
 
   const label = syncing ? "Syncing…" : synced ? "Synced" : "Sync messages";
   const showLoader = conversationKey === null;
@@ -186,19 +181,12 @@ export function MessageSyncButton() {
     try {
       const didSync = await syncMessagesToServer();
       setSynced(true);
-      setToast({
-        show: true,
-        message: didSync
-          ? "Messages synced successfully!"
-          : "Already synced — no new messages",
-        type: "success",
-      });
+      showToast(
+        didSync ? "Messages synced successfully!" : "Already synced — no new messages",
+        "success",
+      );
     } catch {
-      setToast({
-        show: true,
-        message: "Failed to sync messages",
-        type: "error",
-      });
+      showToast("Failed to sync messages", "error");
     } finally {
       setSyncing(false);
     }

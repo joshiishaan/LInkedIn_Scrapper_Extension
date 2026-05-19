@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useState, useEffect } from "react";
-import { useTheme } from "../context/ThemeContext";
-import { useShadowPortal } from "../hooks/useShadowPortal";
+import { useTheme } from "../../context/ThemeContext";
+import { useShadowPortal } from "../../hooks/useShadowPortal";
 
 interface ProfilePanelProps {
   onClose: () => void;

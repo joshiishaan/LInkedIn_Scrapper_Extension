@@ -1,4 +1,4 @@
-import { API_BASE_URL, getAuthHeaders } from "./_apiBase";
+import { API_BASE_URL, getAuthHeaders, throwApiError } from "../../_apiBase";
 
 export const tasksApi = {
   getTasks: async (contactId: string, after?: string, userTimeZone?: string) => {
@@ -6,11 +6,7 @@ export const tasksApi = {
     if (after) url += `&after=${encodeURIComponent(after)}`;
     if (userTimeZone) url += `&userTimeZone=${encodeURIComponent(userTimeZone)}`;
     const response = await fetch(url, { headers: await getAuthHeaders() });
-    if (!response.ok) {
-      const error = await response.json();
-      console.error("API Error:", error);
-      throw new Error("Failed to fetch tasks");
-    }
+    if (!response.ok) await throwApiError(response, "Failed to fetch tasks");
     return response.json();
   },
 
@@ -32,11 +28,7 @@ export const tasksApi = {
       headers: await getAuthHeaders(),
       body: JSON.stringify(payload),
     });
-    if (!response.ok) {
-      const error = await response.json();
-      console.error("API Error:", error);
-      throw new Error(error?.message || "Failed to create task");
-    }
+    if (!response.ok) await throwApiError(response, "Failed to create task");
     return response.json();
   },
 
@@ -60,11 +52,7 @@ export const tasksApi = {
       headers: await getAuthHeaders(),
       body: JSON.stringify(payload),
     });
-    if (!response.ok) {
-      const error = await response.json();
-      console.error("API Error:", error);
-      throw new Error(error?.message || "Failed to update task");
-    }
+    if (!response.ok) await throwApiError(response, "Failed to update task");
     return response.json();
   },
 
@@ -72,7 +60,7 @@ export const tasksApi = {
     let url = `${API_BASE_URL}/hubspot/tasks/all`;
     if (userTimeZone) url += `?userTimeZone=${encodeURIComponent(userTimeZone)}`;
     const response = await fetch(url, { headers: await getAuthHeaders() });
-    if (!response.ok) throw new Error("Failed to fetch tasks");
+    if (!response.ok) await throwApiError(response, "Failed to fetch tasks");
     return response.json();
   },
 
@@ -81,11 +69,7 @@ export const tasksApi = {
       method: "DELETE",
       headers: await getAuthHeaders(),
     });
-    if (!response.ok) {
-      const error = await response.json();
-      console.error("API Error:", error);
-      throw new Error("Failed to delete task");
-    }
+    if (!response.ok) await throwApiError(response, "Failed to delete task");
     return response.json();
   },
 };

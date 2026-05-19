@@ -1,11 +1,12 @@
 import { createPortal } from "react-dom";
 import { useState, useEffect } from "react";
-import { useTheme } from "../context/ThemeContext";
-import { notesApi } from "../services/api";
-import { useShadowPortal } from "../hooks/useShadowPortal";
+import { useTheme } from "../../context/ThemeContext";
+import { notesApi } from "../../services/api";
+import { useShadowPortal } from "../../hooks/useShadowPortal";
+import { useToast } from "../../hooks/useToast";
 import NoteListPanel from "./NoteListPanel";
 import NoteEditorPanel from "./NoteEditorPanel";
-import DeleteConfirmDialog from "./DeleteConfirmDialog";
+import DeleteConfirmDialog from "../shared/DeleteConfirmDialog";
 
 interface Note {
   id: string;
@@ -49,6 +50,7 @@ export default function NotesPanel({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [showExpandedPanel, setShowExpandedPanel] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
@@ -62,6 +64,8 @@ export default function NotesPanel({
   const [title, setTitle] = useState("");
 
   const shadowRoot = useShadowPortal(isOpen);
+  const { toast, showToast } = useToast();
+  const toastShadowRoot = useShadowPortal(toast.show);
 
   useEffect(() => {
     if (isOpen && hubspotContactId) loadNotes();
@@ -71,6 +75,7 @@ export default function NotesPanel({
     if (!hubspotContactId) return;
     setIsLoading(true);
     setNextCursor(null);
+    setLoadError(null);
     try {
       const response = await notesApi.getNotes(hubspotContactId, undefined, 20);
       const { notes: fetched, hasMore: hm, nextCursor: nc } = response.data;
@@ -78,8 +83,9 @@ export default function NotesPanel({
       setHasMore(hm);
       setNextCursor(nc);
       onNotesCountChange?.(fetched.length);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to load notes:", err);
+      setLoadError(err?.message || "Failed to load notes. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -94,8 +100,9 @@ export default function NotesPanel({
       setNotes((prev) => [...prev, ...more]);
       setHasMore(hm);
       setNextCursor(nc);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to load more notes:", err);
+      setLoadError(err?.message || "Failed to load more notes.");
     } finally {
       setIsLoadingMore(false);
     }
@@ -150,7 +157,7 @@ export default function NotesPanel({
       handleCloseExpandedPanel();
     } catch (err) {
       console.error("Failed to save note:", err);
-      alert("Failed to save note");
+      showToast(err instanceof Error ? err.message : "Failed to save note", "error");
     } finally {
       setIsSaving(false);
     }
@@ -170,7 +177,7 @@ export default function NotesPanel({
       onNotesCountChange?.(notes.length - 1);
     } catch (err) {
       console.error("Failed to delete note:", err);
-      alert("Failed to delete note");
+      showToast(err instanceof Error ? err.message : "Failed to delete note", "error");
     } finally {
       setDeletingNoteId(null);
     }
@@ -182,13 +189,19 @@ export default function NotesPanel({
 
   const isFormValid = content.trim() && (!editingNote || hasChanges());
 
-  return createPortal(
+  const panelPortal = createPortal(
     <>
       <style>{`* { box-sizing: border-box; } @keyframes spin { to { transform: rotate(360deg); } } *::-webkit-scrollbar { display: none; }`}</style>
       <div
         onClick={onClose}
         style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.3)", backdropFilter: "blur(2px)", pointerEvents: "auto" }}
       />
+      {!showExpandedPanel && loadError && (
+        <div style={{ padding: "12px 16px", color: "#e53e3e", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+          <span>⚠ {loadError}</span>
+          <button onClick={loadNotes} style={{ fontSize: 12, padding: "2px 8px", cursor: "pointer" }}>Retry</button>
+        </div>
+      )}
       {!showExpandedPanel && (
         <NoteListPanel
           colors={colors} isDark={isDark} notes={notes}
@@ -218,5 +231,40 @@ export default function NotesPanel({
       )}
     </>,
     shadowRoot,
+  );
+
+  const toastPortal =
+    toast.show &&
+    toastShadowRoot &&
+    createPortal(
+      <div
+        style={{
+          position: "fixed",
+          top: "20px",
+          right: "20px",
+          background: toast.type === "success" ? "#10b981" : "#ef4444",
+          color: "white",
+          padding: "12px 20px",
+          borderRadius: "8px",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+          fontSize: "14px",
+          fontWeight: 500,
+          zIndex: 2147483647,
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          pointerEvents: "auto",
+        }}
+      >
+        {toast.message}
+      </div>,
+      toastShadowRoot,
+    );
+
+  return (
+    <>
+      {panelPortal}
+      {toastPortal}
+    </>
   );
 }

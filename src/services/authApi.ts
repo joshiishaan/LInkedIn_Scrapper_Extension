@@ -7,7 +7,10 @@ export const authApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
-    if (!response.ok) throw new Error("Login failed");
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.message || "Login failed");
+    }
     return response.json();
   },
 
@@ -17,7 +20,10 @@ export const authApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, email, password }),
     });
-    if (!response.ok) throw new Error("Signup failed");
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.message || "Signup failed");
+    }
     return response.json();
   },
 

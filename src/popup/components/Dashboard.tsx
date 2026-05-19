@@ -17,6 +17,7 @@ export default function Dashboard({ user, onLogout }: Props) {
   const [hubspotConnected, setHubspotConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
+  const [statusError, setStatusError] = useState(false);
 
   // Check HubSpot connection on mount
   useEffect(() => {
@@ -28,8 +29,10 @@ export default function Dashboard({ user, onLogout }: Props) {
     try {
       const response = await hubspotApi.checkStatus();
       setHubspotConnected(response.data.connected);
+      setStatusError(false);
     } catch (err) {
       console.error("Failed to check HubSpot status", err);
+      setStatusError(true);
     } finally {
       setLoading(false);
     }
@@ -89,6 +92,12 @@ export default function Dashboard({ user, onLogout }: Props) {
         <h3>HubSpot Integration</h3>
         {loading ? (
           <div className="status-loading">Checking connection...</div>
+        ) : statusError ? (
+          <div className="status-error">
+            <span className="status-icon">⚠</span>
+            <span>Could not check HubSpot status — please try again.</span>
+            <button onClick={checkHubspotConnection} className="connect-btn">Retry</button>
+          </div>
         ) : hubspotConnected ? (
           <div className="status-connected">
             <span className="status-icon">✓</span>

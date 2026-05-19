@@ -29,3 +29,15 @@ export const getAuthHeaders = async (): Promise<Record<string, string>> => {
     ...(user?.token && { Authorization: `Bearer ${user.token}` }),
   };
 };
+
+export async function throwApiError(
+  response: Response,
+  fallback: string,
+): Promise<never> {
+  if (response.status === 401) {
+    await chrome.storage.local.remove("user");
+    throw new Error("Session expired. Please login again.");
+  }
+  const body = await response.json().catch(() => ({}));
+  throw new Error((body as any).message || fallback);
+}

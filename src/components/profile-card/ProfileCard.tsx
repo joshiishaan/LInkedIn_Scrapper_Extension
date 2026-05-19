@@ -4,8 +4,8 @@
  * Handles authentication, HubSpot connection, and profile data fetching
  */
 
-import { useState, useEffect } from "react";
-import { useTheme } from "../context/ThemeContext";
+import { useState, useEffect, useRef } from "react";
+import { useTheme } from "../../context/ThemeContext";
 import {
   fetchLinkedInProfile,
   fetchLinkedInCompany,
@@ -14,12 +14,12 @@ import {
   getProfileIdFromUrl,
   extractCompanyIdFromUrl,
   fetchLinkedInContactInfo,
-} from "../utils/linkedinApi";
+} from "../../utils/linkedinApi";
 import {
   getInterceptedProfile,
   getInterceptedCompany,
-} from "../hooks/useLinkedInProfileInterceptor";
-import { linkedinApi, hubspotApi } from "../services/api";
+} from "../../hooks/useLinkedInProfileInterceptor";
+import { linkedinApi, hubspotApi } from "../../services/api";
 import CompanySelectionModal from "./CompanySelectionModal";
 import SyncedProfileView from "./SyncedProfileView";
 
@@ -80,6 +80,7 @@ export default function ProfileCard() {
   const [isHubspotConnected, setIsHubspotConnected] = useState(false);
   // const [isSynced, setIsSynced] = useState(false);
   const [syncedData, setSyncedData] = useState<SyncedData | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Check sync status when URL changes or auth state changes
   useEffect(() => {
@@ -132,8 +133,22 @@ export default function ProfileCard() {
 
   // Open extension popup for login
   const handleLogin = () => {
-    chrome.runtime.sendMessage({ action: "openPopup" });
+    chrome.runtime.sendMessage({ action: "openPopup" }).catch((err: unknown) => {
+      console.error("[HubLead] sendMessage failed:", err);
+    });
   };
+
+  // Refs to hold polling handles so they can be cleared on unmount
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear any active OAuth polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+    };
+  }, []);
 
   // Initiate HubSpot OAuth connection
   const handleConnectHubspot = async () => {
@@ -141,34 +156,25 @@ export default function ProfileCard() {
       const response = await hubspotApi.getConnectUrl();
       window.open(response.data.authUrl, "_blank", "width=600,height=700");
 
-      const intervalRef = { current: 0 };
-      const timeoutRef = { current: 0 };
-
-      intervalRef.current = setInterval(async () => {
+      pollIntervalRef.current = setInterval(async () => {
         try {
           const status = await hubspotApi.checkStatus();
           if (status.data.connected) {
             setIsHubspotConnected(true);
-            clearInterval(intervalRef.current);
-            clearTimeout(timeoutRef.current);
+            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+            if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
           }
         } catch (err) {
           console.error("Status check failed:", err);
         }
       }, 2000);
 
-      timeoutRef.current = setTimeout(() => {
-        clearInterval(intervalRef.current);
+      pollTimeoutRef.current = setTimeout(() => {
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       }, 60000);
-
-      // Cleanup on unmount
-      return () => {
-        clearInterval(intervalRef.current);
-        clearTimeout(timeoutRef.current);
-      };
     } catch (err) {
       console.error("HubSpot connection failed:", err);
-      alert("Failed to connect HubSpot");
+      setErrorMessage(err instanceof Error ? err.message : "Failed to connect HubSpot");
     }
   };
 
@@ -260,11 +266,9 @@ export default function ProfileCard() {
 
       if (current.length === 0) {
         if (allCurrent.length > 0) {
-          alert(
-            "Current position found but no LinkedIn company page is associated. Cannot sync company data.",
-          );
+          setErrorMessage("Current position found but no LinkedIn company page is associated. Cannot sync company data.");
         } else {
-          alert("No current companies found");
+          setErrorMessage("No current companies found");
         }
       } else if (current.length === 1) {
         await fetchCompanyData(current[0], result);
@@ -275,7 +279,7 @@ export default function ProfileCard() {
       }
     } catch (err) {
       console.error("Error fetching profile:", err);
-      alert("Failed to fetch profile data");
+      setErrorMessage(err instanceof Error ? err.message : "Failed to fetch profile data");
     } finally {
       setLoading(false);
     }
@@ -284,7 +288,7 @@ export default function ProfileCard() {
   // Fetch company data and save to HubSpot
   const fetchCompanyData = async (experience: Experience, profile: any) => {
     if (!experience.companyUrl) {
-      alert("Company URL not available");
+      setErrorMessage("Company URL not available");
       return;
     }
 
@@ -335,10 +339,8 @@ export default function ProfileCard() {
         .map((u: string) => extractHostname(u))
         .filter(Boolean);
       if (companyWebDomain && personalDomains.includes(companyWebDomain)) {
-        alert(
-          `"${experience.company}" has the same website as your LinkedIn personal website (${companyData.basicInfo.website}).\n\n` +
-            `Personal websites/brands should not be synced as your employer in HubSpot. ` +
-            `Please select your actual employer company.`,
+        setErrorMessage(
+          `"${experience.company}" has the same website as your LinkedIn personal website (${companyData.basicInfo.website}). Personal websites/brands should not be synced as your employer in HubSpot. Please select your actual employer company.`,
         );
         return;
       }
@@ -397,7 +399,7 @@ export default function ProfileCard() {
       });
     } catch (err) {
       console.error("Error:", err);
-      alert("Failed to save data");
+      setErrorMessage(err instanceof Error ? err.message : "Failed to save data");
     } finally {
       setFetchingCompany(false);
       setShowModal(false);
@@ -547,6 +549,40 @@ export default function ProfileCard() {
           marginTop: "8px",
         }}
       >
+        {errorMessage && (
+          <div
+            style={{
+              marginBottom: "12px",
+              padding: "10px 14px",
+              background: "#fff5f5",
+              border: "1px solid #feb2b2",
+              borderRadius: "6px",
+              color: "#e53e3e",
+              fontSize: "13px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: "8px",
+            }}
+          >
+            <span>{errorMessage}</span>
+            <button
+              onClick={() => setErrorMessage(null)}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "#e53e3e",
+                fontSize: "16px",
+                lineHeight: 1,
+                padding: 0,
+                flexShrink: 0,
+              }}
+            >
+              ×
+            </button>
+          </div>
+        )}
         <div
           style={{
             display: "flex",

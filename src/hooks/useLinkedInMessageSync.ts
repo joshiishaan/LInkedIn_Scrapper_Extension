@@ -17,10 +17,52 @@ import {
   simplifyMessage,
 } from "../utils/messageSyncHelpers";
 
+// ---------------------------------------------------------------------------
+// Module-level cache — captures HL_NETWORK_CALL events the moment this module
+// is evaluated (i.e. when the content script loads), BEFORE any component has
+// mounted and registered its own listener.
+//
+// Problem solved: on SPA navigation LinkedIn fires its message-fetch network
+// call before MessageSyncButton is injected into the DOM. The component-level
+// listener misses the event, conversationKey stays null, and the button shows
+// a spinner forever. The module-level listener below catches those early events
+// so the component can seed its state from the cache on mount.
+// ---------------------------------------------------------------------------
+let _cachedKey: string | null = null;
+let _cachedMessages: any[] = [];
+let _cachedVariables: string | null = null;
+let _cachedHeaders: Record<string, string> | null = null;
+
+function _cacheNetworkCall(event: Event) {
+  const e = event as HlNetworkCallEvent;
+  const detail = e.detail;
+  if (!detail || detail.statusCode >= 400) return;
+  if (detail.type !== "HL_INTERNAL_LINKEDIN_MESSAGES") return;
+
+  const key = parseConversationKeyFromUrl(detail.callUrl);
+  if (!key) return;
+
+  const loadedMessages = extractLoadedMessages(detail);
+  if (!loadedMessages || loadedMessages.length === 0) return;
+
+  _cachedKey = key;
+  _cachedMessages = loadedMessages;
+  try {
+    const raw = new URL(detail.callUrl).searchParams.get("variables") || "";
+    _cachedVariables = raw || null;
+  } catch {
+    _cachedVariables = null;
+  }
+  _cachedHeaders = detail.requestHeaders ?? null;
+}
+
+window.addEventListener("HL_NETWORK_CALL", _cacheNetworkCall as EventListener);
+
 export function useLinkedInMessageSync() {
   const [conversationKey, setConversationKey] = useState<string | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [isButtonDisabled, setIsButtonDisabled] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const lastVariablesRef = useRef<string | null>(null);
   const lastHeadersRef = useRef<Record<string, string> | null>(null);
   const lastLoggedCountRef = useRef(0);
@@ -29,6 +71,7 @@ export function useLinkedInMessageSync() {
   const activeFetchCurrentConversation = useCallback(async () => {
     if (!conversationKey) return;
 
+    setFetchError(null);
     const variablesString = lastVariablesRef.current;
     if (variablesString) {
       try {
@@ -40,11 +83,10 @@ export function useLinkedInMessageSync() {
         lastLoggedCountRef.current = 0;
         setIsButtonDisabled(false);
         return;
-      } catch (err) {
-        console.error(
-          "Active Voyager messaging fetch failed (with variables):",
-          err,
-        );
+      } catch (err: any) {
+        console.error("Active Voyager messaging fetch failed (with variables):", err);
+        setFetchError(err?.message || "Failed to refresh messages. Please reload the page.");
+        setIsButtonDisabled(false);
         return;
       }
     }
@@ -61,8 +103,10 @@ export function useLinkedInMessageSync() {
       setMessages(fresh);
       lastLoggedCountRef.current = 0;
       setIsButtonDisabled(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Active Voyager messaging fetch failed:", err);
+      setFetchError(err?.message || "Failed to refresh messages. Please reload the page.");
+      setIsButtonDisabled(false);
     }
   }, [conversationKey]);
 
@@ -77,12 +121,6 @@ export function useLinkedInMessageSync() {
 
       const key = parseConversationKeyFromUrl(detail.callUrl);
       if (!key) return;
-
-      console.log("[HubLead Debug] Interceptor key", {
-        key,
-        callUrl: detail.callUrl,
-        variables: new URL(detail.callUrl).searchParams.get("variables"),
-      });
 
       try {
         const raw = new URL(detail.callUrl).searchParams.get("variables") || "";
@@ -304,6 +342,16 @@ export function useLinkedInMessageSync() {
     setIsButtonDisabled(true);
   }, [conversationKey, messages]);
 
+  // Seed state from the module-level cache on mount.
+  useEffect(() => {
+    if (_cachedKey && _cachedMessages.length > 0) {
+      setConversationKey(_cachedKey);
+      setMessages(_cachedMessages);
+      lastVariablesRef.current = _cachedVariables;
+      lastHeadersRef.current = _cachedHeaders;
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const handler = (e: Event) => handleNetworkCall(e);
     window.addEventListener("HL_NETWORK_CALL", handler as EventListener);
@@ -339,6 +387,7 @@ export function useLinkedInMessageSync() {
     conversationKey,
     messages,
     isButtonDisabled,
+    fetchError,
     logNewMessagesToConsole,
     activeFetchCurrentConversation,
     syncMessagesToServer,
