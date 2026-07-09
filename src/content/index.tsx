@@ -12,15 +12,26 @@ import ProfileCard from "../components/profile-card/ProfileCard";
 import { MessageSyncButton } from "../components/messaging/MessageSyncButton";
 import Sidebar from "../components/sidebar/Sidebar";
 import { useLinkedInProfileInterceptor } from "../hooks/useLinkedInProfileInterceptor";
+import { useLinkedInConnectionTracker } from "../hooks/useLinkedInConnectionTracker";
+import { useLinkedInMessageActivityTracker } from "../hooks/useLinkedInMessageActivityTracker";
+import { runConnectionsSync } from "../utils/connectionSync";
+import { initAuthGate } from "./authGate";
 import { ErrorBoundary } from "../components/shared/ErrorBoundary";
 
 // eslint-disable-next-line react-refresh/only-export-components
 function HubLeadRoot() {
   useLinkedInProfileInterceptor();
+  useLinkedInConnectionTracker();
+  useLinkedInMessageActivityTracker();
   return null;
 }
 
 (function () {
+  // Login wall: block all LinkedIn interaction until the user is authenticated
+  // in our extension. Installed first, before any other injection, and manages
+  // itself thereafter via storage changes.
+  initAuthGate();
+
   let currentUrl = location.href;
   const observers: MutationObserver[] = [];
   let messageRoot: ReactDOM.Root | null = null;
@@ -109,7 +120,9 @@ function HubLeadRoot() {
       }
     });
 
-    containerWatcher.observe(document, {
+    // Observe the container's OWN document — the overlay may live in the main
+    // document or inside the same-origin messaging iframe.
+    containerWatcher.observe(container.ownerDocument, {
       childList: true,
       subtree: true,
     });
@@ -167,19 +180,65 @@ function HubLeadRoot() {
 
   // --- Messaging page injection (/messaging) ---
 
-  // --- Messaging page injection (/messaging) ---
+  const MESSAGE_OVERLAY_ID = "linkedin-extension-message-sync-overlay";
 
-  function findMessageInputRoot(): HTMLElement | null {
+  // LinkedIn renders the messaging thread + composer in TWO different places
+  // depending on how you arrived:
+  //   - full page load of a thread URL  -> in the MAIN document
+  //   - in-app (SPA) navigation          -> inside a same-origin "preload" iframe
+  //       (e.g. https://www.linkedin.com/preload/?_bprMode=vanilla)
+  // So every place that looks for the composer / our overlay must search the
+  // main document AND any accessible same-origin child-frame documents. The main
+  // document is always checked first, so the full-load path is unchanged.
+  function candidateDocs(): Document[] {
+    const docs: Document[] = [document];
+    for (const f of Array.from(document.querySelectorAll("iframe"))) {
+      let d: Document | null = null;
+      try {
+        d = (f as HTMLIFrameElement).contentDocument;
+      } catch {
+        d = null; // cross-origin — inaccessible
+      }
+      if (d && d !== document && !docs.includes(d)) docs.push(d);
+    }
+    return docs;
+  }
+
+  // The document our overlay is currently mounted in (main or an iframe), if any.
+  function overlayDoc(): Document | null {
+    for (const d of candidateDocs()) {
+      if (d.getElementById(MESSAGE_OVERLAY_ID)) return d;
+    }
+    return null;
+  }
+
+  // Our button's CSS lives as <style>/<link> in the MAIN document head (Vite
+  // injects it there). When we inject into an iframe document those rules don't
+  // apply, so mirror them into the iframe head once. Guarded by a marker node.
+  function mirrorStylesInto(doc: Document): void {
+    if (doc === document) return;
+    const head = doc.head || doc.documentElement;
+    if (!head || doc.getElementById("__hl_style_mirror")) return;
+    const marker = doc.createElement("meta");
+    marker.id = "__hl_style_mirror";
+    head.appendChild(marker);
+    document
+      .querySelectorAll('style, link[rel="stylesheet"]')
+      .forEach((n) => head.appendChild(n.cloneNode(true)));
+  }
+
+  // Find the composer root within a SINGLE document.
+  function findMessageInputRootIn(doc: Document): HTMLElement | null {
     const isOnThreadUrl = /\/messaging(\/thread\/|\/)\S/.test(window.location.pathname);
 
     // Try a broad list of thread-container selectors covering old and new
     // LinkedIn messenger layouts.
     const threadContainer =
-      document.querySelector<HTMLElement>("[id^='message-thread-']") ??
-      document.querySelector<HTMLElement>(".msg-convo-wrapper") ??
-      document.querySelector<HTMLElement>("[class*='msg-thread']") ??
-      document.querySelector<HTMLElement>("[class*='thread-detail']") ??
-      document.querySelector<HTMLElement>(".scaffold-layout__main");
+      doc.querySelector<HTMLElement>("[id^='message-thread-']") ??
+      doc.querySelector<HTMLElement>(".msg-convo-wrapper") ??
+      doc.querySelector<HTMLElement>("[class*='msg-thread']") ??
+      doc.querySelector<HTMLElement>("[class*='thread-detail']") ??
+      doc.querySelector<HTMLElement>(".scaffold-layout__main");
 
     // LinkedIn has used contenteditable="true", contenteditable="",
     // and contenteditable="plaintext-only" across UI versions.
@@ -193,10 +252,9 @@ function HubLeadRoot() {
       "textarea",
     ].join(", ");
 
-    // Scope to thread container when available; fall back to full document
+    // Scope to thread container when available; fall back to the whole document
     // only on confirmed thread URLs (the URL itself rules out left-panel hits).
-    const scope: ParentNode =
-      threadContainer ?? (isOnThreadUrl ? document : null!);
+    const scope: ParentNode = threadContainer ?? (isOnThreadUrl ? doc : null!);
     if (!scope) return null;
 
     const allCandidates = Array.from(
@@ -237,22 +295,42 @@ function HubLeadRoot() {
     );
   }
 
+  // Find the composer across the main document and same-origin iframes, and
+  // report which document it lives in so we inject into the right place.
+  function findMessageInputTarget(): { root: HTMLElement; doc: Document } | null {
+    for (const doc of candidateDocs()) {
+      const root = findMessageInputRootIn(doc);
+      if (root && root.parentElement) return { root, doc };
+    }
+    return null;
+  }
+
   // Try to inject right now. Returns true when the overlay is present
   // (either freshly injected or already there); returns false when the
   // composer isn't in the DOM yet so the caller can keep waiting.
   function performInjection(): boolean {
     if (!window.location.href.includes("/messaging")) return true;
 
-    if (document.getElementById("linkedin-extension-message-sync-overlay")) {
-      return true;
+    if (overlayDoc()) return true;
+
+    const target = findMessageInputTarget();
+    if (!target) {
+      console.log("[HL-DBG] performInjection: composer NOT found yet @", location.href); // [HL-DBG]
+      return false;
     }
+    const { root: inputRoot, doc } = target;
+    console.log(
+      "[HL-DBG] performInjection: composer found -> injecting button (doc =",
+      doc === document ? "MAIN" : "IFRAME",
+      ")",
+    ); // [HL-DBG]
 
-    const inputRoot = findMessageInputRoot();
-    if (!inputRoot || !inputRoot.parentElement) return false;
+    // If the composer is in an iframe, make our styles available there.
+    mirrorStylesInto(doc);
 
-    const hostParent = inputRoot.parentElement;
-    const container = document.createElement("div");
-    container.id = "linkedin-extension-message-sync-overlay";
+    const hostParent = inputRoot.parentElement!;
+    const container = doc.createElement("div");
+    container.id = MESSAGE_OVERLAY_ID;
     container.style.width = "100%";
     container.style.display = "flex";
     container.style.justifyContent = "center";
@@ -284,9 +362,7 @@ function HubLeadRoot() {
           disarmComposerObserver();
           return;
         }
-        const overlayPresent = !!document.getElementById(
-          "linkedin-extension-message-sync-overlay",
-        );
+        const overlayPresent = !!overlayDoc();
         if (overlayPresent) return;
         // const formFound = !!findMessageInputRoot();
         // console.log("[Scrapper Debug] composer observer fired", {
@@ -324,7 +400,7 @@ function HubLeadRoot() {
         stopInjectionPoll();
         return;
       }
-      if (document.getElementById("linkedin-extension-message-sync-overlay")) {
+      if (overlayDoc()) {
         return;
       }
       // console.log("[Scrapper Debug] injection poll tick");
@@ -341,6 +417,7 @@ function HubLeadRoot() {
   }
 
   function initMessagingInjection() {
+    console.log("[HL-DBG] initMessagingInjection called @", location.href); // [HL-DBG]
     if (!window.location.href.includes("/messaging")) {
       disarmComposerObserver();
       stopInjectionPoll();
@@ -350,9 +427,7 @@ function HubLeadRoot() {
     isInjecting = true;
 
     try {
-      document
-        .getElementById("linkedin-extension-message-sync-overlay")
-        ?.remove();
+      overlayDoc()?.getElementById(MESSAGE_OVERLAY_ID)?.remove();
 
       performInjection();
       // Arm the persistent observer unconditionally for the duration of
@@ -386,6 +461,7 @@ function HubLeadRoot() {
   function handleUrlChange() {
     const newUrl = location.href;
     if (newUrl === currentUrl) return;
+    console.log("[HL-DBG] urlChange", currentUrl, "->", newUrl); // [HL-DBG]
 
     // console.log(
     //   "[Scrapper Debug] url change detected:",
@@ -418,9 +494,7 @@ function HubLeadRoot() {
     disarmComposerObserver();
     stopInjectionPoll();
 
-    const oldMessageSync = document.getElementById(
-      "linkedin-extension-message-sync-overlay",
-    );
+    const oldMessageSync = overlayDoc()?.getElementById(MESSAGE_OVERLAY_ID) ?? null;
 
     if (messageRoot) {
       try {
@@ -464,7 +538,7 @@ function HubLeadRoot() {
         healthCheckTimer = setTimeout(() => {
           healthCheckTimer = null;
           if (
-            !document.getElementById("linkedin-extension-message-sync-overlay") &&
+            !overlayDoc() &&
             !isInjecting
           ) {
             if (messageRoot) {
@@ -499,6 +573,62 @@ function HubLeadRoot() {
       ReactDOM.createRoot(container).render(<HubLeadRoot />);
     }
   })();
+
+  // Event pump: the network interceptor runs in the MAIN world, whose
+  // window.dispatchEvent does NOT reach this isolated content-script world. So
+  // the interceptor bridges every payload as a hidden DOM node (#__hl_evt_bridge
+  // / data-hl-evt) in the top document; here we observe that host, drain each
+  // node, and RE-dispatch HL_NETWORK_CALL as an isolated-world CustomEvent. This
+  // makes all existing consumers (message sync, profile interceptor, message-
+  // activity tracker) receive events with an intact `detail`, with no per-hook
+  // changes. (The connection tracker keeps its own separate #__hl_ct_bridge.)
+  (function mountEventPump() {
+    const HOST_ID = "__hl_evt_bridge";
+    let host = document.getElementById(HOST_ID);
+    if (!host) {
+      host = document.createElement("div");
+      host.id = HOST_ID;
+      (host as HTMLElement).style.display = "none";
+      (document.documentElement || document.body).appendChild(host);
+    }
+
+    const drain = (node: Element) => {
+      const json = node.getAttribute("data-hl-evt");
+      node.remove();
+      if (!json) return;
+      try {
+        const detail = JSON.parse(json);
+        console.log("[HL-DBG] pump re-dispatch", detail?.type); // [HL-DBG]
+        window.dispatchEvent(new CustomEvent("HL_NETWORK_CALL", { detail }));
+      } catch {
+        /* malformed payload — ignore */
+      }
+    };
+
+    host.querySelectorAll("[data-hl-evt]").forEach(drain);
+    const pump = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        m.addedNodes.forEach((n) => {
+          if (n instanceof Element && n.hasAttribute("data-hl-evt")) drain(n);
+        });
+      }
+    });
+    pump.observe(host, { childList: true });
+  })();
+
+  // Manual connections-sync trigger from the popup ("Sync now" button). Runs the
+  // reconcile (force: bypasses the 10h throttle) and returns the counts.
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === "HL_RUN_CONNECTIONS_SYNC") {
+      runConnectionsSync({ force: true })
+        .then((result) => sendResponse({ success: true, result }))
+        .catch((err) =>
+          sendResponse({ success: false, error: String(err?.message || err) }),
+        );
+      return true; // keep the channel open for the async response
+    }
+    return false;
+  });
 
   // Catch any unhandled promise rejections in the content script context
   window.addEventListener("unhandledrejection", (event) => {

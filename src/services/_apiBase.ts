@@ -4,6 +4,7 @@ interface User {
   token: string;
   name: string;
   email: string;
+  [key: string]: unknown;
 }
 
 function isTokenExpired(token: string): boolean {
@@ -15,18 +16,70 @@ function isTokenExpired(token: string): boolean {
   }
 }
 
+// Single-flight refresh: concurrent callers whose access token has expired all
+// await the SAME /auth/refresh call. This is critical because refresh tokens
+// rotate on the server — if two calls each sent the (same) stored refresh
+// token, the second would present an already-revoked token and trip the
+// server's reuse-detection, force-logging the user out.
+let refreshPromise: Promise<string> | null = null;
+
+async function doRefresh(): Promise<string> {
+  const { refreshToken, user } = await chrome.storage.local.get([
+    "refreshToken",
+    "user",
+  ]);
+
+  if (!refreshToken) {
+    await chrome.storage.local.remove(["user", "refreshToken"]);
+    throw new Error("Session expired. Please login again.");
+  }
+
+  const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refreshToken }),
+  });
+
+  if (!response.ok) {
+    await chrome.storage.local.remove(["user", "refreshToken"]);
+    throw new Error("Session expired. Please login again.");
+  }
+
+  const body = await response.json();
+  const newToken: string = body.data.token;
+  const newRefreshToken: string = body.data.refreshToken;
+
+  await chrome.storage.local.set({
+    user: { ...(user || {}), token: newToken },
+    refreshToken: newRefreshToken,
+  });
+
+  return newToken;
+}
+
+export async function refreshAccessToken(): Promise<string> {
+  if (!refreshPromise) {
+    refreshPromise = doRefresh().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
 export const getAuthHeaders = async (): Promise<Record<string, string>> => {
   const result = await chrome.storage.local.get(["user"]);
   const user = result.user as User | undefined;
+  let token = user?.token;
 
-  if (user?.token && isTokenExpired(user.token)) {
-    await chrome.storage.local.remove("user");
-    throw new Error("Session expired. Please login again.");
+  // Access token is short-lived (15m); silently refresh it when expired so the
+  // user isn't logged out mid-session. Falls through to login if refresh fails.
+  if (token && isTokenExpired(token)) {
+    token = await refreshAccessToken();
   }
 
   return {
     "Content-Type": "application/json",
-    ...(user?.token && { Authorization: `Bearer ${user.token}` }),
+    ...(token && { Authorization: `Bearer ${token}` }),
   };
 };
 
@@ -35,7 +88,7 @@ export async function throwApiError(
   fallback: string,
 ): Promise<never> {
   if (response.status === 401) {
-    await chrome.storage.local.remove("user");
+    await chrome.storage.local.remove(["user", "refreshToken"]);
     throw new Error("Session expired. Please login again.");
   }
   const body = await response.json().catch(() => ({}));
