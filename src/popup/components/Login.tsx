@@ -9,9 +9,10 @@ import { authApi } from "../../services/api";
 interface Props {
   onAuth: (user: any) => void;
   onSignup: () => void;
+  onForgotPassword: () => void;
 }
 
-export default function Login({ onAuth, onSignup }: Props) {
+export default function Login({ onAuth, onSignup, onForgotPassword }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -81,6 +82,9 @@ export default function Login({ onAuth, onSignup }: Props) {
         </button>
       </form>
       <div className="auth-links">
+        <button onClick={onForgotPassword} className="link-btn">
+          Forgot password?
+        </button>
         <button onClick={onSignup} className="link-btn">
           Create Account
         </button>

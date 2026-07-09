@@ -200,3 +200,29 @@ export function extractLoadedMessages(detail: HlNetworkCallDetail): any[] {
     detail.responseBody?.data?.messengerMessagesBySyncToken?.elements ?? [];
   return (elements as any[]).filter((el) => !!el);
 }
+
+// Shape-tolerant message extractor for the metrics tracker. LinkedIn returns
+// messages under different data keys depending on the query — the initial load
+// uses `messengerMessagesBySyncToken`, while scroll-back pagination and some
+// refetches use other keys (e.g. `messengerMessagesByAnchorTimestamp`). Rather
+// than hard-code each, collect message-like elements from ANY `*.elements`
+// array in the response. Non-message elements (no deliveredAt and no sender)
+// are ignored, and deriveActivity further filters on a positive deliveredAt.
+export function extractAllLoadedMessages(detail: HlNetworkCallDetail): any[] {
+  const data = detail.responseBody?.data;
+  if (!data || typeof data !== "object") return [];
+  const out: any[] = [];
+  for (const value of Object.values(data as Record<string, any>)) {
+    const els = value?.elements;
+    if (!Array.isArray(els)) continue;
+    for (const el of els) {
+      if (
+        el &&
+        (typeof el.deliveredAt === "number" || el.actor || el.sender)
+      ) {
+        out.push(el);
+      }
+    }
+  }
+  return out;
+}

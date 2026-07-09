@@ -157,6 +157,71 @@ body {
   transition: all 0.3s ease;
 }
 
+/* Themed confirmation banner (e.g. "reset code sent") */
+.info {
+  background: var(--success-bg);
+  color: var(--success-text);
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 12px;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+/* Short description under the auth-form heading */
+.auth-subtitle {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+  margin: -12px 0 20px;
+  transition: color 0.3s ease;
+}
+
+.auth-subtitle strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* 6-digit OTP: segmented underline boxes */
+.otp-boxes {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.auth-form input.otp-box {
+  width: 40px;
+  height: 48px;
+  padding: 0;
+  margin: 0;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid var(--border-color);
+  border-radius: 0;
+  transition:
+    border-color 0.2s ease,
+    color 0.3s ease;
+}
+
+.auth-form input.otp-box:focus {
+  outline: none;
+  border-bottom-color: var(--bg-gradient-start);
+  box-shadow: none;
+}
+
+/* Secondary link inside a form (e.g. "Use a different email") */
+.form-link {
+  display: block;
+  margin: 16px auto 0;
+}
+
 .success-message {
   text-align: center;
 }
@@ -394,4 +459,204 @@ body {
 @keyframes eyeFlip {
   0%   { opacity: 0; transform: scale(0.5) rotateX(80deg); }
   100% { opacity: 1; transform: scale(1)   rotateX(0deg); }
+}
+
+/* Home nav cards → Connections / Messages pages */
+.nav-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.nav-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+
+.nav-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--bg-gradient-end);
+  box-shadow: 0 4px 10px var(--shadow);
+}
+
+.nav-icon {
+  display: block;
+  color: var(--bg-gradient-end);
+  margin-bottom: 6px;
+}
+
+.nav-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.nav-sub {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+/* Sub-page header (Connections / Messages) with a back button */
+.page-header {
+  background: linear-gradient(
+    135deg,
+    var(--bg-gradient-start) 0%,
+    var(--bg-gradient-end) 100%
+  );
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 2px 8px var(--shadow);
+}
+
+.page-header h2 {
+  color: #f5f7fa;
+  font-size: 17px;
+}
+
+.back-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #f5f7fa;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.back-btn:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+/* Stat list (Connections / Messages pages): one roomy row per metric */
+.stat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--bg-gradient-end);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.stat-row:hover {
+  box-shadow: 0 2px 6px var(--shadow);
+}
+
+.stat-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dim while a manual sync/refresh is in flight */
+.stat-list--busy {
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+/* Connections section: status tiles + sync */
+.conn-stats {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.conn-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.conn-tile span {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.conn-tile label {
+  font-size: 9px;
+  line-height: 1.1;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.sync-msg {
+  margin-top: 10px;
+  font-size: 13px;
+  text-align: center;
+  color: var(--text-secondary);
+  transition: color 0.3s ease;
+}
+
+/* Loading row for the Connections section */
+.conn-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 0;
+}
+
+/* Dim the tiles while a manual sync is refreshing them */
+.conn-stats--busy {
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+/* Small inline spinner (used in the loading row and the Sync button) */
+.conn-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  vertical-align: -2px;
+  animation: connSpin 0.7s linear infinite;
+}
+
+@keyframes connSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }

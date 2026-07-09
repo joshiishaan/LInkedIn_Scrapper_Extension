@@ -1,25 +1,30 @@
 /**
- * Dashboard Component
- * Shows user info and HubSpot connection status with theme toggle
+ * Dashboard (home)
+ * Shows user info + HubSpot status, and navigates to the Connections and
+ * Messages sub-pages (each with its own stat cards).
  */
 
 import { useState, useEffect } from "react";
 import { hubspotApi } from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
+import ConnectionsPage from "./ConnectionsPage";
+import MessagesPage from "./MessagesPage";
 
 interface Props {
   user: any;
   onLogout: () => void;
 }
 
+type SubView = "home" | "connections" | "messages";
+
 export default function Dashboard({ user, onLogout }: Props) {
   const { theme, toggleTheme } = useTheme();
+  const [view, setView] = useState<SubView>("home");
   const [hubspotConnected, setHubspotConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [statusError, setStatusError] = useState(false);
 
-  // Check HubSpot connection on mount
   useEffect(() => {
     checkHubspotConnection();
   }, []);
@@ -62,6 +67,11 @@ export default function Dashboard({ user, onLogout }: Props) {
     }
   };
 
+  if (view === "connections")
+    return <ConnectionsPage onBack={() => setView("home")} />;
+  if (view === "messages")
+    return <MessagesPage onBack={() => setView("home")} />;
+
   return (
     <div className="dashboard">
       <div className="dashboard-header">
@@ -89,6 +99,53 @@ export default function Dashboard({ user, onLogout }: Props) {
       </div>
 
       <div className="integration-section">
+        <h3>Analytics</h3>
+        <div className="nav-grid">
+          <button className="nav-card" onClick={() => setView("connections")}>
+            <svg
+              className="nav-icon"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="6" cy="7" r="2.4" />
+              <circle cx="18" cy="7" r="2.4" />
+              <circle cx="12" cy="17.5" r="2.4" />
+              <line x1="8.4" y1="7" x2="15.6" y2="7" />
+              <line x1="7.7" y1="8.8" x2="10.3" y2="15.7" />
+              <line x1="16.3" y1="8.8" x2="13.7" y2="15.7" />
+            </svg>
+            <span className="nav-label">Connections</span>
+            <span className="nav-sub">Sent · accepted · pending</span>
+          </button>
+          <button className="nav-card" onClick={() => setView("messages")}>
+            <svg
+              className="nav-icon"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M20 11.5a7.5 7.5 0 0 1-10.6 6.8L4 20l1.7-5.4A7.5 7.5 0 1 1 20 11.5Z" />
+            </svg>
+            <span className="nav-label">Messages</span>
+            <span className="nav-sub">Sent · read · replies</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="integration-section">
         <h3>HubSpot Integration</h3>
         {loading ? (
           <div className="status-loading">Checking connection...</div>
@@ -96,7 +153,9 @@ export default function Dashboard({ user, onLogout }: Props) {
           <div className="status-error">
             <span className="status-icon">⚠</span>
             <span>Could not check HubSpot status — please try again.</span>
-            <button onClick={checkHubspotConnection} className="connect-btn">Retry</button>
+            <button onClick={checkHubspotConnection} className="connect-btn">
+              Retry
+            </button>
           </div>
         ) : hubspotConnected ? (
           <div className="status-connected">

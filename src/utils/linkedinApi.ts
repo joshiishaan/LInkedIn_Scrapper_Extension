@@ -5,12 +5,88 @@ export { parseProfileData, parseCompanyData } from "./linkedinParsers";
 // --- CSRF helpers ---
 
 // Handles both quoted and unquoted JSESSIONID
-function getCsrfTokenFromCookies(): string {
+export function getCsrfTokenFromCookies(): string {
   const cookie = document.cookie || "";
   const quoted = cookie.match(/JSESSIONID="([^"]+)"/);
   if (quoted?.[1]) return quoted[1];
   const unquoted = cookie.match(/JSESSIONID=([^;]+)/);
   return unquoted?.[1] || "";
+}
+
+// Extract a LinkedIn member id ("ACoAA…") from arbitrary text. Shared so the
+// connection tracker and the connections-sync module key targets identically —
+// both must produce the same id as the stored `targetLinkedinId`.
+export function extractMemberIdFrom(text: string): string | null {
+  if (!text) return null;
+  const urn = text.match(/urn:li:fs[d]?_(?:miniProfile|profile):([A-Za-z0-9_-]+)/);
+  if (urn) return urn[1];
+  const pid = text.match(/"profileId"\s*:\s*"([A-Za-z0-9_-]+)"/);
+  return pid ? pid[1] : null;
+}
+
+// --- Logged-in LinkedIn identity (actor B) ---
+
+export interface LinkedInIdentity {
+  memberId: string; // stable "ACoAA…" member id (from the miniProfile URN)
+  name: string | null; // display name
+  publicIdentifier: string | null; // vanity slug (…/in/<publicIdentifier>)
+}
+
+// The account logged into the browser doesn't change within a page session, so
+// cache it after the first successful lookup.
+let cachedIdentity: LinkedInIdentity | null = null;
+
+// Fetch the LinkedIn account currently logged into the browser via the Voyager
+// `me` endpoint. Returns null on any failure (not logged in, network, shape
+// change) — callers treat the actor as simply unknown in that case.
+export async function fetchLoggedInLinkedInIdentity(): Promise<LinkedInIdentity | null> {
+  if (cachedIdentity) return cachedIdentity;
+
+  try {
+    // Default accept returns the simple direct shape: { plainId, miniProfile }.
+    const response = await fetch("https://www.linkedin.com/voyager/api/me", {
+      credentials: "include",
+      headers: {
+        "csrf-token": getCsrfTokenFromCookies(),
+        "x-restli-protocol-version": "2.0.0",
+      },
+    });
+    if (!response.ok) return null;
+
+    const data = await response.json();
+
+    // Direct shape: data.miniProfile. Normalized shape (if a caller ever sets
+    // the normalized accept header): the profile entity lives in data.included.
+    const mini =
+      data?.miniProfile ??
+      (Array.isArray(data?.included)
+        ? data.included.find(
+            (e: any) =>
+              /MiniProfile/i.test(e?.$type || "") || e?.publicIdentifier,
+          )
+        : null);
+    if (!mini) return null;
+
+    // Use the fsd_profile URN so the actor id matches the "ACoAA…" format we
+    // store for targets. entityUrn (fs_miniProfile) carries the same id.
+    const urn: string = mini.dashEntityUrn || mini.entityUrn || "";
+    const memberId = urn.match(
+      /urn:li:fs[d]?_(?:miniProfile|profile):([A-Za-z0-9_-]+)/,
+    )?.[1];
+    if (!memberId) return null;
+
+    const name =
+      [mini.firstName, mini.lastName].filter(Boolean).join(" ").trim() || null;
+
+    cachedIdentity = {
+      memberId,
+      name,
+      publicIdentifier: mini.publicIdentifier ?? null,
+    };
+    return cachedIdentity;
+  } catch {
+    return null;
+  }
 }
 
 // --- URL helpers ---
