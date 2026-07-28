@@ -316,13 +316,18 @@ export default function ProfileCard() {
         companyData = await fetchLinkedInCompany(companyId);
       }
 
-      // Contact info: always direct API (not reliably interceptable)
+      // Contact info: always direct API (not reliably interceptable).
+      // Fetched for the *viewed* profile, so these websites belong to the lead.
       const contactInfo = await fetchLinkedInContactInfo(profile.basicInfo.publicIdentifier);
 
-      // Personal-brand guard: if the company's external website domain matches
-      // one of the contact's personal websites, this is a personal brand / freelance
-      // page, NOT an employer. Syncing it would set the personal website URL as the
-      // primary company in HubSpot, which is wrong.
+      // Personal-brand guard: catches freelancers/solo operators whose "employer"
+      // is really their own brand page — syncing that would set a personal website
+      // as the primary company in HubSpot.
+      //
+      // A matching website domain alone is NOT sufficient evidence: employees very
+      // commonly list their employer's site as their own profile website, which
+      // made this block legitimate companies. We now require the domain match AND
+      // at least one signal that the company is genuinely a one-person entity.
       const extractHostname = (url?: string | null): string | null => {
         if (!url) return null;
         try {
@@ -338,9 +343,44 @@ export default function ProfileCard() {
       const personalDomains = (contactInfo.websites ?? [])
         .map((u: string) => extractHostname(u))
         .filter(Boolean);
-      if (companyWebDomain && personalDomains.includes(companyWebDomain)) {
+
+      const domainsMatch = !!(
+        companyWebDomain && personalDomains.includes(companyWebDomain)
+      );
+
+      // Signal 1 — headcount. LinkedIn reports staff as a range, e.g. {start: 2,
+      // end: 10}. A range topping out at one person is a solo page. Large
+      // companies use an open-ended range (no `end`), so an absent `end` must
+      // never count as a personal brand.
+      const staffRangeEnd = companyData.basicInfo.companySize?.end;
+      const isSoloCompany =
+        typeof staffRangeEnd === "number" && staffRangeEnd <= 1;
+
+      // Signal 2 — the company is named after the contact ("Jane Doe Consulting").
+      // Compare alphanumerics only so punctuation and spacing don't matter.
+      const normalizeName = (s?: string | null): string =>
+        (s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const contactFullName = normalizeName(
+        `${profile?.basicInfo?.firstName ?? ""}${profile?.basicInfo?.lastName ?? ""}`,
+      );
+      const normalizedCompanyName = normalizeName(companyData.basicInfo.name);
+      const nameMatchesContact =
+        !!contactFullName &&
+        !!normalizedCompanyName &&
+        (normalizedCompanyName.includes(contactFullName) ||
+          contactFullName.includes(normalizedCompanyName));
+
+      const guardWillBlock =
+        domainsMatch && (isSoloCompany || nameMatchesContact);
+
+      if (guardWillBlock) {
+        const reason = isSoloCompany
+          ? "its LinkedIn page lists no more than one employee"
+          : "it is named after them";
+        const contactFirstName = profile?.basicInfo?.firstName || "this person";
+
         setErrorMessage(
-          `"${experience.company}" has the same website as your LinkedIn personal website (${companyData.basicInfo.website}). Personal websites/brands should not be synced as your employer in HubSpot. Please select your actual employer company.`,
+          `"${experience.company}" looks like ${contactFirstName}'s personal brand rather than an employer: it uses their personal website (${companyData.basicInfo.website}) and ${reason}. Please select their actual employer company.`,
         );
         return;
       }
