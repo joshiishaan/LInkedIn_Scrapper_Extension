@@ -11,6 +11,7 @@ import { ThemeProvider } from "../context/ThemeContext";
 import ProfileCard from "../components/profile-card/ProfileCard";
 import { MessageSyncButton } from "../components/messaging/MessageSyncButton";
 import Sidebar from "../components/sidebar/Sidebar";
+import { dlog } from "../utils/debug";
 import { useLinkedInProfileInterceptor } from "../hooks/useLinkedInProfileInterceptor";
 import { useLinkedInConnectionTracker } from "../hooks/useLinkedInConnectionTracker";
 import { useLinkedInMessageActivityTracker } from "../hooks/useLinkedInMessageActivityTracker";
@@ -86,7 +87,7 @@ function HubLeadRoot() {
   // This fires when LinkedIn rebuilds the composer/form on conversation switch
   // without a URL change (or due to a race after a URL change).
   function watchContainerRemoval(container: HTMLElement) {
-    console.log("[Scrapper Debug] Container removal detected; reinjecting");
+    dlog("[Scrapper Debug] Container removal detected; reinjecting");
 
     if (containerWatcher) {
       containerWatcher.disconnect();
@@ -315,11 +316,11 @@ function HubLeadRoot() {
 
     const target = findMessageInputTarget();
     if (!target) {
-      console.log("[HL-DBG] performInjection: composer NOT found yet @", location.href); // [HL-DBG]
+      dlog("[HL-DBG] performInjection: composer NOT found yet @", location.href); // [HL-DBG]
       return false;
     }
     const { root: inputRoot, doc } = target;
-    console.log(
+    dlog(
       "[HL-DBG] performInjection: composer found -> injecting button (doc =",
       doc === document ? "MAIN" : "IFRAME",
       ")",
@@ -417,7 +418,7 @@ function HubLeadRoot() {
   }
 
   function initMessagingInjection() {
-    console.log("[HL-DBG] initMessagingInjection called @", location.href); // [HL-DBG]
+    dlog("[HL-DBG] initMessagingInjection called @", location.href); // [HL-DBG]
     if (!window.location.href.includes("/messaging")) {
       disarmComposerObserver();
       stopInjectionPoll();
@@ -461,7 +462,7 @@ function HubLeadRoot() {
   function handleUrlChange() {
     const newUrl = location.href;
     if (newUrl === currentUrl) return;
-    console.log("[HL-DBG] urlChange", currentUrl, "->", newUrl); // [HL-DBG]
+    dlog("[HL-DBG] urlChange", currentUrl, "->", newUrl); // [HL-DBG]
 
     // console.log(
     //   "[Scrapper Debug] url change detected:",
@@ -598,7 +599,7 @@ function HubLeadRoot() {
       if (!json) return;
       try {
         const detail = JSON.parse(json);
-        console.log("[HL-DBG] pump re-dispatch", detail?.type); // [HL-DBG]
+        dlog("[HL-DBG] pump re-dispatch", detail?.type); // [HL-DBG]
         window.dispatchEvent(new CustomEvent("HL_NETWORK_CALL", { detail }));
       } catch {
         /* malformed payload — ignore */

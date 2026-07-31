@@ -21,7 +21,7 @@ import {
   extractConversationParticipants,
 } from "../utils/messageActivity";
 import { extractAllLoadedMessages } from "../utils/messageSyncHelpers";
-import { dlog, dwarn } from "../utils/debug";
+import { DEBUG, dlog, dwarn, derror } from "../utils/debug";
 
 // Per-conversation working state: the messages + read watermark seen so far, and
 // a signature of the last recorded state to avoid redundant upserts.
@@ -96,11 +96,11 @@ function conversationIdFromUrl(url: string): string | null {
 async function recordIfChanged(key: string): Promise<void> {
   const st = convState.get(key);
   if (!st?.elements?.length || !extensionAlive()) {
-    console.log("[HL-DBG] recordIfChanged: no elements yet for", key); // [HL-DBG]
+    dlog("[HL-DBG] recordIfChanged: no elements yet for", key); // [HL-DBG]
     return;
   }
   if (!(await hasAuth())) {
-    console.log("[HL-DBG] recordIfChanged: NO AUTH TOKEN — user not logged in"); // [HL-DBG]
+    dlog("[HL-DBG] recordIfChanged: NO AUTH TOKEN — user not logged in"); // [HL-DBG]
     return;
   }
 
@@ -123,10 +123,10 @@ async function recordIfChanged(key: string): Promise<void> {
   // Include the participant NAME (not just presence) so a later, cleaner name
   // re-records and overwrites an earlier junky one.
   const sig = `${payload.sentCount}:${payload.receivedCount}:${payload.readCount}:${payload.hasReply ? 1 : 0}:${payload.participantName ?? ""}`;
-  console.log("[HL-DBG] participant name =", JSON.stringify(payload.participantName ?? null)); // [HL-DBG]
-  console.log("[HL-DBG] read: watermark=", st.watermark, "readCount=", payload.readCount, "of sent", payload.sentCount, "for", key); // [HL-DBG]
+  dlog("[HL-DBG] participant name =", JSON.stringify(payload.participantName ?? null)); // [HL-DBG]
+  dlog("[HL-DBG] read: watermark=", st.watermark, "readCount=", payload.readCount, "of sent", payload.sentCount, "for", key); // [HL-DBG]
   // [HL-DBG] show what we derived and whether it's a change.
-  console.log(
+  dlog(
     "[HL-DBG] derived",
     key,
     "self=",
@@ -145,9 +145,9 @@ async function recordIfChanged(key: string): Promise<void> {
 
   try {
     await messagesApi.recordActivity(payload);
-    console.log("[HL-DBG] recordActivity OK ->", key); // [HL-DBG]
+    dlog("[HL-DBG] recordActivity OK ->", key); // [HL-DBG]
   } catch (err) {
-    console.error("[HL-DBG] recordActivity FAILED (backend?):", err); // [HL-DBG]
+    derror("[HL-DBG] recordActivity FAILED (backend?):", err); // [HL-DBG]
     throw err;
   }
   dlog(
@@ -179,12 +179,12 @@ async function handleEvent(detail: any): Promise<void> {
       // so its key is present; a background thread is caught on next open.
       const rst = convState.get(rtKey);
       if (!rst?.elements?.length) {
-        console.log("[HL-DBG] realtime skipped (unknown conversation) ->", rtKey); // [HL-DBG]
+        dlog("[HL-DBG] realtime skipped (unknown conversation) ->", rtKey); // [HL-DBG]
         return;
       }
       rst.elements = mergeMessages(rst.elements, [detail.message]);
       convState.set(rtKey, rst);
-      console.log("[HL-DBG] realtime merged ->", rtKey); // [HL-DBG]
+      dlog("[HL-DBG] realtime merged ->", rtKey); // [HL-DBG]
       await recordIfChanged(rtKey);
       return;
     }
@@ -199,7 +199,7 @@ async function handleEvent(detail: any): Promise<void> {
       if (detail.seerId && detail.seerId === selfId) return; // our own read — ignore
       sst.watermark = Math.max(sst.watermark || 0, detail.seenAt);
       convState.set(skey, sst);
-      console.log("[HL-DBG] realtime seen merged -> watermark", sst.watermark, skey); // [HL-DBG]
+      dlog("[HL-DBG] realtime seen merged -> watermark", sst.watermark, skey); // [HL-DBG]
       await recordIfChanged(skey);
       return;
     }
@@ -211,7 +211,12 @@ async function handleEvent(detail: any): Promise<void> {
     if (detail.type === "HL_INTERNAL_LINKEDIN_CONVERSATION") {
       const selfId = (await fetchLoggedInLinkedInIdentity())?.memberId ?? null;
       const participants = extractConversationParticipants(detail.responseBody, selfId);
-      console.log("[HL-DBG] conversation participants:", participants.length); // [HL-DBG]
+      dlog("[HL-DBG] conversation participants:", participants.length);
+
+      // Apply every hint BEFORE recording. The inbox list can carry 25+
+      // conversations, and recording inside the same loop made each upsert wait
+      // on the previous one's round trip.
+      const pending: string[] = [];
       for (const p of participants) {
         const cst = convState.get(p.conversationKey) ?? { watermark: 0, sig: "" };
         cst.hint = {
@@ -220,8 +225,13 @@ async function handleEvent(detail: any): Promise<void> {
           profileUrl: p.profileUrl ?? cst.hint?.profileUrl ?? null,
         };
         convState.set(p.conversationKey, cst);
-        await recordIfChanged(p.conversationKey); // no-ops if no messages yet
+        // Only conversations we already hold messages for can produce a record;
+        // the rest would be a no-op round trip through recordIfChanged.
+        if (cst.elements?.length) pending.push(p.conversationKey);
       }
+
+      // Settle rather than all: one failed upsert must not abort the others.
+      await Promise.allSettled(pending.map((k) => recordIfChanged(k)));
       return;
     }
 
@@ -230,7 +240,7 @@ async function handleEvent(detail: any): Promise<void> {
       detail.type === "HL_INTERNAL_LINKEDIN_MESSAGES" ||
       detail.type === "HL_INTERNAL_LINKEDIN_SEEN_RECEIPTS"
     ) {
-      console.log("[HL-DBG] tracker received", detail.type, "status", detail.statusCode);
+      dlog("[HL-DBG] tracker received", detail.type, "status", detail.statusCode);
     }
     const key = conversationIdFromUrl(detail.callUrl || "");
     if (!key) {
@@ -238,7 +248,7 @@ async function handleEvent(detail: any): Promise<void> {
         detail.type === "HL_INTERNAL_LINKEDIN_MESSAGES" ||
         detail.type === "HL_INTERNAL_LINKEDIN_SEEN_RECEIPTS"
       ) {
-        console.log("[HL-DBG] no conversation key in URL:", detail.callUrl); // [HL-DBG]
+        dlog("[HL-DBG] no conversation key in URL:", detail.callUrl); // [HL-DBG]
       }
       return;
     }
@@ -249,7 +259,7 @@ async function handleEvent(detail: any): Promise<void> {
       if (!elements?.length) {
         // A partial/other messenger query with nothing to add — ignore it so it
         // can't wipe the messages we already merged for this conversation.
-        console.log("[HL-DBG] MESSAGES event empty — ignored for", key); // [HL-DBG]
+        dlog("[HL-DBG] MESSAGES event empty — ignored for", key); // [HL-DBG]
         return;
       }
       // UNION with what we already have (don't replace) so an incremental fetch
@@ -268,13 +278,16 @@ async function handleEvent(detail: any): Promise<void> {
       }
     } else if (detail.type === "HL_INTERNAL_LINKEDIN_SEEN_RECEIPTS") {
       const actor = await fetchLoggedInLinkedInIdentity();
-      // [HL-DBG] one-shot dump of the real seen-receipts shape.
-      if (!(window as any).__hlSeenDump) {
+      // One-shot dump of the real seen-receipts shape. Wrapped in `if (DEBUG)`
+      // rather than relying on dlog alone: dlog is a no-op in production but its
+      // ARGUMENTS still evaluate, so an unguarded JSON.stringify of the whole
+      // response body would run on every user's machine for nothing.
+      if (DEBUG && !(window as any).__hlSeenDump) {
         (window as any).__hlSeenDump = true;
         try {
           const data = detail.responseBody?.data;
-          console.log("[HL-DBG] SEEN data keys =", data && Object.keys(data)); // [HL-DBG]
-          console.log("[HL-DBG] SEEN raw =", JSON.stringify(data).slice(0, 1500)); // [HL-DBG]
+          dlog("[HL-DBG] SEEN data keys =", data && Object.keys(data));
+          dlog("[HL-DBG] SEEN raw =", JSON.stringify(data).slice(0, 1500));
         } catch {
           /* ignore */
         }
@@ -283,7 +296,7 @@ async function handleEvent(detail: any): Promise<void> {
       const wm = extractReadWatermarkDeep(detail.responseBody, actor?.memberId ?? null);
       // Keep the watermark monotonic — a later receipt can only move it forward.
       st.watermark = Math.max(st.watermark || 0, wm);
-      console.log("[HL-DBG] SEEN watermark computed =", wm, "-> st.watermark", st.watermark); // [HL-DBG]
+      dlog("[HL-DBG] SEEN watermark computed =", wm, "-> st.watermark", st.watermark); // [HL-DBG]
       // The reader IS the recipient — capture them even if they never replied.
       const seenParticipant = extractOtherParticipant(detail.responseBody, actor?.memberId ?? null);
       if (seenParticipant) {
@@ -301,7 +314,7 @@ async function handleEvent(detail: any): Promise<void> {
     await recordIfChanged(key);
   } catch (e) {
     if (extensionAlive()) {
-      console.error("[HL-DBG] handleEvent threw:", e); // [HL-DBG]
+      derror("[HL-DBG] handleEvent threw:", e); // [HL-DBG]
       dwarn("[msg-tracker] failed:", e);
     }
   }

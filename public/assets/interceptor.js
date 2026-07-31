@@ -9,17 +9,27 @@
   if (window.__hlMessageInterceptorInstalled) return;
   window.__hlMessageInterceptorInstalled = true;
 
-  // [HL-DBG] temporary: prove the MAIN-world hook installed and in which frame.
-  try {
-    console.log(
-      "[HL-DBG] interceptor installed @",
-      location.href,
-      "isTop=",
-      window.top === window,
-    );
-  } catch (e) {
-    /* ignore */
+  /**
+   * Debug logging switch.
+   *
+   * This file lives in public/ and is injected verbatim into the page's MAIN
+   * world — Vite never bundles it, so the `dlog` helper and its build-time
+   * tree-shaking are unavailable here. Gate on a constant instead.
+   *
+   * Leave FALSE for releases. Flip to true (or set window.__hlDebug = true from
+   * the console before LinkedIn boots) while diagnosing message counts.
+   */
+  var HL_DEBUG = false;
+  function dbg() {
+    if (!HL_DEBUG && !window.__hlDebug) return;
+    try {
+      console.log.apply(console, arguments);
+    } catch (e) {
+      /* console unavailable — ignore */
+    }
   }
+
+  dbg("[HL-DBG] interceptor installed @", location.href, "isTop=", window.top === window);
 
   function pickLinkedInHeaders(headersInit) {
     const picked = {};
@@ -92,7 +102,7 @@
         detail.type === "HL_INTERNAL_LINKEDIN_SEEN_RECEIPTS"
       ) {
         try {
-          console.log(
+          dbg(
             "[HL-DBG] emit",
             detail.type,
             "status=",
@@ -404,7 +414,7 @@
       var msgs = collectRealtimeMessages(json);
       for (var j = 0; j < msgs.length; j++) {
         try {
-          console.log("[HL-DBG] realtime msg ->", msgs[j].conversationKey); // [HL-DBG]
+          dbg("[HL-DBG] realtime msg ->", msgs[j].conversationKey); // [HL-DBG]
         } catch (e) {
           /* ignore */
         }
@@ -419,7 +429,7 @@
       var seens = collectRealtimeSeen(json);
       for (var s = 0; s < seens.length; s++) {
         try {
-          console.log(
+          dbg(
             "[HL-DBG] realtime seen ->",
             seens[s].conversationKey,
             "seenAt=",
@@ -497,7 +507,7 @@
       // which would never resolve on a long-lived connection).
       if (isRealtimeConnectRequest(url)) {
         try {
-          console.log("[HL-DBG] realtime fetch stream ->", url.slice(0, 80)); // [HL-DBG]
+          dbg("[HL-DBG] realtime fetch stream ->", url.slice(0, 80)); // [HL-DBG]
           pumpRealtimeStream(response.clone());
         } catch (e) {
           /* ignore */
@@ -624,7 +634,7 @@
       const ws =
         protocols !== undefined ? new OrigWS(url, protocols) : new OrigWS(url);
       try {
-        console.log("[HL-DBG] WS opened ->", String(url).slice(0, 80)); // [HL-DBG]
+        dbg("[HL-DBG] WS opened ->", String(url).slice(0, 80)); // [HL-DBG]
         ws.addEventListener("message", function (ev) {
           try {
             if (typeof ev.data === "string") handleRealtimeText(ev.data);
@@ -655,7 +665,7 @@
     function WrappedES(url, config) {
       const es = config !== undefined ? new OrigES(url, config) : new OrigES(url);
       try {
-        console.log("[HL-DBG] ES opened ->", String(url).slice(0, 80)); // [HL-DBG]
+        dbg("[HL-DBG] ES opened ->", String(url).slice(0, 80)); // [HL-DBG]
         es.addEventListener("message", function (ev) {
           try {
             if (typeof ev.data === "string") handleRealtimeText(ev.data);

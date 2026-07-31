@@ -41,12 +41,77 @@ let lastRunAt = 0;
 const CONNECTION_TYPE = "com.linkedin.voyager.dash.relationships.Connection";
 const CONNECTIONS_URL = (start: number, count: number) =>
   `https://www.linkedin.com/voyager/api/relationships/dash/connections?q=search&sortType=RECENTLY_ADDED&count=${count}&start=${start}`;
-// Sent-invitations endpoint not yet located on today's (SDUI) LinkedIn. Until it
-// is, the sync runs ACCEPTED-only (see fetchSentInvitationMemberIds).
+// Sent invitations: LinkedIn's My Network moved to SDUI, so this is NOT a
+// Voyager JSON endpoint — it's the React-server-component pager behind the
+// "Sent" tab, which answers a plain JSON POST body and returns an RSC flight
+// payload (~73 KB/page, 10 invitations per page, offset paginated).
+//
+// Verified live: offsets are stable, a full walk of 796 invitations produced
+// exactly 796 unique ids with no duplicates or gaps, and the list is sorted
+// newest-first. End of list is a tiny (~200 byte) response carrying no ids.
+const SENT_INVITES_URL =
+  "/flagship-web/rsc-action/actions/pagination?sduiid=com.linkedin.sdui.pagers.mynetwork.invitationsList";
+const SENT_PAGE = 10; // LinkedIn's fixed page size for this pager
+const SENT_PAGE_PACING_MS = 1100; // unattended + sequential: stay unobtrusive
+const SENT_MAX_PAGES = 400; // hard stop (~4000 invitations)
+// A real end-of-list page is tiny. Anything substantially larger that yields no
+// ids means our extraction broke, NOT that the list ended — see the walker.
+const SENT_EMPTY_MAX_BYTES = 2000;
+
+// The pager's request body. Mirrors what LinkedIn's own UI sends; only
+// startIndex varies between pages.
+const sentInvitesBody = (startIndex: number) => ({
+  pagerId: "com.linkedin.sdui.pagers.mynetwork.invitationsList",
+  clientArguments: {
+    $type: "proto.sdui.actions.requests.RequestedArguments",
+    requestedStateKeys: [],
+    payload: {
+      startIndex,
+      invitationTypeEnum: ["GenericInvitationType_CONNECTION"],
+      invitationClassificationTypes: [],
+      filterCriteriaEnum: "FilterCriteria_UNKNOWN",
+      invitationDirectionEnum: "PendingInvitationDirection_SENT",
+    },
+    requestMetadata: { $type: "proto.sdui.common.RequestMetadata" },
+    states: [],
+    screenId:
+      "com.linkedin.sdui.flagshipnav.mynetwork.invitations.InvitationSentWithType",
+  },
+  paginationRequest: {
+    $type: "proto.sdui.actions.requests.PaginationRequest",
+    pagerId: "com.linkedin.sdui.pagers.mynetwork.invitationsList",
+    trigger: {
+      $case: "itemDistanceTrigger",
+      itemDistanceTrigger: {
+        $type: "proto.sdui.actions.requests.ItemDistanceTrigger",
+        preloadDistance: 3,
+        preloadLength: 250,
+      },
+    },
+    retryCount: 2,
+    requestedArguments: {
+      $type: "proto.sdui.actions.requests.RequestedArguments",
+      requestedStateKeys: [],
+      payload: {
+        startIndex,
+        invitationTypeEnum: ["GenericInvitationType_CONNECTION"],
+        invitationClassificationTypes: [],
+        filterCriteriaEnum: "FilterCriteria_UNKNOWN",
+        invitationDirectionEnum: "PendingInvitationDirection_SENT",
+      },
+      requestMetadata: { $type: "proto.sdui.common.RequestMetadata" },
+    },
+  },
+});
 
 export interface SyncResult {
   accepted: number;
-  notAccepted: number;
+  /** Resolved as expired — also covers declines, which LinkedIn never reveals. */
+  expired: number;
+  /** Missing for the first time; a second confirming walk is required. */
+  newlyAbsent: number;
+  /** Missing before, present again — a paging artefact, nothing resolved. */
+  reappeared: number;
   stillPending: number;
   skipped?: boolean;
   error?: string;
@@ -54,7 +119,13 @@ export interface SyncResult {
 
 let syncInFlight: Promise<SyncResult> | null = null;
 
-const ZERO: SyncResult = { accepted: 0, notAccepted: 0, stillPending: 0 };
+const ZERO: SyncResult = {
+  accepted: 0,
+  expired: 0,
+  newlyAbsent: 0,
+  reappeared: 0,
+  stillPending: 0,
+};
 
 // True while this content script still has a live extension connection.
 function extensionAlive(): boolean {
@@ -92,13 +163,88 @@ async function getJson(url: string): Promise<any | null> {
 
 // ── LinkedIn fetchers ────────────────────────────────────────────────────────
 
-// Still-pending invitees ("ACoAA…"). null = "not fetched" → backend runs
-// ACCEPTED-only (never NOT_ACCEPTED). The sent-invitations endpoint isn't
-// located on today's SDUI LinkedIn yet, so this is intentionally null for now.
+export interface SentInvitesFetch {
+  /** Member ids ("ACoAA…") still outstanding in LinkedIn's Sent list. */
+  ids: string[];
+  /**
+   * True ONLY when the walk reached a genuine end-of-list page.
+   *
+   * This is the single most safety-critical flag in the sync. An incomplete
+   * walk is indistinguishable from "every invitation disappeared", so the
+   * backend refuses to resolve anything to EXPIRED unless this is true. It is
+   * false on: a page cap hit, any HTTP/network failure mid-walk, or a suspected
+   * extraction break.
+   */
+  complete: boolean;
+}
+
+/**
+ * Walk LinkedIn's Sent-invitations list and collect every outstanding invitee.
+ *
+ * Returns null when even the first page fails — the caller then runs
+ * ACCEPTED-only, exactly as before, and nothing can be expired.
+ */
 async function fetchSentInvitationMemberIds(
   _actorId: string | null,
-): Promise<string[] | null> {
-  return null;
+): Promise<SentInvitesFetch | null> {
+  const ids = new Set<string>();
+  const csrf = getCsrfTokenFromCookies();
+  let startIndex = 0;
+
+  for (let page = 0; page < SENT_MAX_PAGES; page++) {
+    let text: string;
+    try {
+      const res = await fetch(SENT_INVITES_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json", "csrf-token": csrf },
+        body: JSON.stringify(sentInvitesBody(startIndex)),
+      });
+      if (!res.ok) {
+        dwarn("[conn-sync] sent-invites page failed", res.status, startIndex);
+        // First page failing means we have nothing at all.
+        if (page === 0) return null;
+        // Mid-walk failure: keep what we have, but the walk is NOT complete.
+        return { ids: Array.from(ids), complete: false };
+      }
+      text = await res.text();
+    } catch (e) {
+      dwarn("[conn-sync] sent-invites fetch error", e);
+      if (page === 0) return null;
+      return { ids: Array.from(ids), complete: false };
+    }
+
+    // The response is an RSC flight payload, not JSON. Member ids appear
+    // verbatim, so extract them directly rather than trying to parse a format
+    // LinkedIn can reshape at will.
+    const found = text.match(/ACoAA[A-Za-z0-9_-]+/g) || [];
+
+    if (found.length === 0) {
+      // CRITICAL DISTINCTION. A genuine end-of-list page is tiny. A full-size
+      // page yielding nothing means LinkedIn changed the payload and our
+      // extraction broke — treating that as "the list ended" would report every
+      // outstanding invitation as gone and expire the entire pending set.
+      if (text.length <= SENT_EMPTY_MAX_BYTES) {
+        dlog("[conn-sync] sent-invites walk complete at", startIndex);
+        return { ids: Array.from(ids), complete: true };
+      }
+      dwarn(
+        "[conn-sync] sent-invites: no ids in a full-size page — extraction likely broken; treating walk as INCOMPLETE",
+        { startIndex, bytes: text.length },
+      );
+      return { ids: Array.from(ids), complete: false };
+    }
+
+    found.forEach((id) => ids.add(id));
+    startIndex += SENT_PAGE;
+    await sleep(SENT_PAGE_PACING_MS);
+  }
+
+  dwarn("[conn-sync] sent-invites hit page cap — walk INCOMPLETE", {
+    cap: SENT_MAX_PAGES,
+    collected: ids.size,
+  });
+  return { ids: Array.from(ids), complete: false };
 }
 
 interface ConnFetch {
@@ -205,22 +351,33 @@ export async function runConnectionsSync(opts?: {
       const actor = await fetchLoggedInLinkedInIdentity();
       const actorId = actor?.memberId ?? null;
 
-      const [sentIds, conn] = await Promise.all([
-        fetchSentInvitationMemberIds(actorId),
-        fetchRecentConnections(actorId, CONN_CAP),
-      ]);
+      // Sequential, not parallel: the sent-invitations walk is ~80 requests for
+      // a large account, and firing the connections pagination alongside it
+      // doubles the concurrent load on LinkedIn for no real time saving.
+      const sent = await fetchSentInvitationMemberIds(actorId);
+      const conn = await fetchRecentConnections(actorId, CONN_CAP);
 
-      if (sentIds === null && conn === null) {
+      if (sent === null && conn === null) {
         return { ...ZERO, error: "fetch_failed" }; // nothing usable; don't touch throttle
       }
 
+      dlog(
+        "[conn-sync] sent-invites:",
+        sent?.ids.length ?? "none",
+        "complete=",
+        sent?.complete ?? false,
+      );
+
       const res = await connectionApi.reconcile({
-        stillPendingIds: sentIds ?? [],
+        stillPendingIds: sent?.ids ?? [],
         connected: (conn?.connections ?? []).map((c) => ({
           targetLinkedinId: c.targetLinkedinId,
           ...(c.connectedAt != null && { connectedAt: String(c.connectedAt) }),
         })),
-        sentInvitationsFetched: sentIds !== null,
+        sentInvitationsFetched: sent !== null,
+        // Gate on a COMPLETE walk. A partial list looks exactly like mass
+        // disappearance, so the backend must not resolve anything from it.
+        sentListComplete: sent?.complete === true,
         coverageFloor: conn?.coverageFloor ?? null,
         ...(actorId && { actorLinkedinId: actorId }),
       });

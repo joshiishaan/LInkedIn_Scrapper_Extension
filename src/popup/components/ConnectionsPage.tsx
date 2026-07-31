@@ -84,7 +84,16 @@ export default function ConnectionsPage({ onBack }: Props) {
       } else if (r?.error) {
         setSyncMsg("Couldn't reach LinkedIn — are you logged in?");
       } else {
-        setSyncMsg(`Accepted +${r.accepted} · Not accepted +${r.notAccepted}`);
+        // `newlyAbsent` are invitations that vanished from LinkedIn's Sent list
+        // for the first time. They are deliberately NOT resolved yet — a second
+        // confirming walk is required — so they're surfaced as "pending
+        // confirmation" rather than counted as expired.
+        const pendingConfirm = r.newlyAbsent
+          ? ` · ${r.newlyAbsent} awaiting confirmation`
+          : "";
+        setSyncMsg(
+          `Accepted +${r.accepted ?? 0} · Expired +${r.expired ?? 0}${pendingConfirm}`,
+        );
       }
       await loadConnectionStats();
     } catch {
@@ -98,7 +107,7 @@ export default function ConnectionsPage({ onBack }: Props) {
     ["Sent", stats?.sent],
     ["Pending", stats?.pending],
     ["Accepted", stats?.accepted],
-    ["Not accepted", stats?.notAccepted],
+    ["Expired", stats?.expired],
     ["Withdrawn", stats?.withdrawn],
   ];
 

@@ -4,15 +4,20 @@ import { API_BASE_URL, getAuthHeaders, throwApiError } from "./_apiBase";
 export type ConnectionStatus =
   | "PENDING"
   | "ACCEPTED"
+  // DEPRECATED: superseded by EXPIRED, kept so older stored values still type.
   | "NOT_ACCEPTED"
-  | "WITHDRAWN";
+  | "WITHDRAWN"
+  | "EXPIRED";
 
 export interface ConnectionStats {
   sent: number;
   pending: number;
   accepted: number;
-  notAccepted: number;
   withdrawn: number;
+  /** Absorbs declines too — LinkedIn exposes no reject signal to the sender. */
+  expired: number;
+  /** DEPRECATED: legacy rows only; always 0 for new data. */
+  notAccepted: number;
 }
 
 export interface ConnectionStatsResponse {
@@ -28,13 +33,23 @@ export interface ReconcilePayload {
     connectedAt?: string;
   }[];
   sentInvitationsFetched: boolean;
+  /**
+   * True ONLY when the Sent-list walk reached a genuine end-of-list page.
+   * The backend refuses to resolve anything to EXPIRED without it, because a
+   * partial walk is indistinguishable from every invitation disappearing.
+   */
+  sentListComplete?: boolean;
   coverageFloor?: string | null;
   actorLinkedinId?: string;
 }
 
 export interface ReconcileResult {
   accepted: number;
-  notAccepted: number;
+  expired: number;
+  /** Absent for the first time — awaiting a second confirming walk. */
+  newlyAbsent: number;
+  /** Were absent, then reappeared — marker cleared, nothing resolved. */
+  reappeared: number;
   stillPending: number;
 }
 
