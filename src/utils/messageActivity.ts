@@ -243,7 +243,12 @@ export function deriveActivity(
   let prevSelf = false;
   let sawSelf = false; // true once the first SENT message has been walked
   let sawReceived = false; // true once the first RECEIVED message has been walked
+  let prevAt: number | null = null; // previous message's timestamp, either side
   const events: MessageEventEntry[] = [];
+  // The rep's IANA timezone, read from the browser — same source as the
+  // existing userTimeZone pattern (never stored per-user server-side).
+  // Quiet-hours lateness math on the backend is evaluated in this zone.
+  const selfTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   // Both identities: participant (receiver) and the app user's own (sender).
   let participantLinkedinId: string | null = null;
@@ -256,6 +261,8 @@ export function deriveActivity(
   for (const m of msgs) {
     const isSelf = (!!selfId && m.senderAco === selfId) || m.isSelfActor;
     const messageId = `${m.at}:${m.senderAco ?? ""}`;
+    // What THIS message is a response to — the previous message, either side.
+    const respondsToAt = prevAt !== null ? String(prevAt) : undefined;
     if (isSelf) {
       sentCount += 1;
       const isFollowUp = prevSelf; // consecutive self message = re-ping
@@ -275,6 +282,8 @@ export function deriveActivity(
         occurredAt: String(m.at),
         isFirstTouch,
         isFollowUp,
+        respondsToAt,
+        selfTimeZone,
       });
     } else {
       receivedCount += 1;
@@ -293,8 +302,11 @@ export function deriveActivity(
         type: "RECEIVED",
         occurredAt: String(m.at),
         isFirstReply,
+        respondsToAt,
+        selfTimeZone,
       });
     }
+    prevAt = m.at;
   }
 
   const total = msgs.length;

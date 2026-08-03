@@ -11,6 +11,12 @@ export interface MessageEventEntry {
   isFirstTouch?: boolean;
   isFollowUp?: boolean;
   isFirstReply?: boolean;
+  // The immediately preceding message's occurredAt (either side) — what this
+  // message is a response to. Undefined for the conversation's first message.
+  respondsToAt?: string;
+  // The rep's IANA timezone at record time (browser-sourced). Powers the Late
+  // Messages report's quiet-hours deadline math on the backend.
+  selfTimeZone?: string;
 }
 
 export interface MessageActivityPayload {
