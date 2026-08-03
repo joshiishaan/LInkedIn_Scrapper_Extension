@@ -220,6 +220,13 @@ export function deriveActivity(
   readWatermark = 0, // recipient's latest seenAt; our messages ≤ this are "read"
 ): MessageActivityPayload {
   const msgs = (Array.isArray(elements) ? elements : [])
+    // Exclude system notifications (e.g. "Message request accepted") — LinkedIn
+    // includes these in the same messages list as real chat messages, tagged
+    // with messageBodyRenderFormat "SYSTEM" instead of "DEFAULT". They have a
+    // real sender/deliveredAt like any message, so left in they inflate
+    // sent/receivedCount and corrupt the respondsToAt chain (a real reply ends
+    // up "responding to" the system marker instead of the actual prior message).
+    .filter((e) => e?.messageBodyRenderFormat !== "SYSTEM")
     .map((e) => {
       const actor = e?.actor ?? e?.sender;
       const member = actor?.participantType?.member;
