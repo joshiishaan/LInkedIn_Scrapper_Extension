@@ -16,7 +16,7 @@
  *   - readCount      : filled separately from seen-receipts (0 here)
  */
 
-import type { MessageActivityPayload } from "../services/messagesApi";
+import type { MessageActivityPayload, MessageEventEntry } from "../services/messagesApi";
 
 function extractAco(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -241,6 +241,9 @@ export function deriveActivity(
   let readCount = 0;
   let hasReply = false;
   let prevSelf = false;
+  let sawSelf = false; // true once the first SENT message has been walked
+  let sawReceived = false; // true once the first RECEIVED message has been walked
+  const events: MessageEventEntry[] = [];
 
   // Both identities: participant (receiver) and the app user's own (sender).
   let participantLinkedinId: string | null = null;
@@ -252,9 +255,13 @@ export function deriveActivity(
 
   for (const m of msgs) {
     const isSelf = (!!selfId && m.senderAco === selfId) || m.isSelfActor;
+    const messageId = `${m.at}:${m.senderAco ?? ""}`;
     if (isSelf) {
       sentCount += 1;
-      if (prevSelf) followUpCount += 1; // consecutive self message = re-ping
+      const isFollowUp = prevSelf; // consecutive self message = re-ping
+      if (isFollowUp) followUpCount += 1;
+      const isFirstTouch = !sawSelf; // the very first message WE ever sent here
+      sawSelf = true;
       if (readWatermark > 0 && m.at <= readWatermark) readCount += 1; // seen by recipient
       prevSelf = true;
       if (!selfName) {
@@ -262,15 +269,31 @@ export function deriveActivity(
         selfName = memberName(m.member);
         selfProfileUrl = memberProfileUrl(m.member);
       }
+      events.push({
+        messageId,
+        type: "SENT",
+        occurredAt: String(m.at),
+        isFirstTouch,
+        isFollowUp,
+      });
     } else {
       receivedCount += 1;
+      // The first reply from them, and only once we'd actually sent something.
+      const isFirstReply = !sawReceived && sentCount > 0;
       if (sentCount > 0) hasReply = true; // they answered after we sent
+      sawReceived = true;
       prevSelf = false;
       if (!participantLinkedinId) {
         participantLinkedinId = m.senderAco;
         participantName = memberName(m.member);
         participantProfileUrl = memberProfileUrl(m.member);
       }
+      events.push({
+        messageId,
+        type: "RECEIVED",
+        occurredAt: String(m.at),
+        isFirstReply,
+      });
     }
   }
 
@@ -293,5 +316,6 @@ export function deriveActivity(
     isConversation,
     ...(msgs.length && { firstMessageAt: String(msgs[0].at) }),
     ...(msgs.length && { lastMessageAt: String(msgs[msgs.length - 1].at) }),
+    events,
   };
 }
