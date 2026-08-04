@@ -16,11 +16,19 @@ function isTokenExpired(token: string): boolean {
   }
 }
 
-// Single-flight refresh: concurrent callers whose access token has expired all
-// await the SAME /auth/refresh call. This is critical because refresh tokens
-// rotate on the server — if two calls each sent the (same) stored refresh
-// token, the second would present an already-revoked token and trip the
-// server's reuse-detection, force-logging the user out.
+// Single-flight refresh: concurrent callers WITHIN THIS SAME CONTEXT whose
+// access token has expired all await the SAME /auth/refresh call, instead of
+// each presenting the same (soon-to-rotate) refresh token independently.
+//
+// This does NOT cover races ACROSS contexts: this extension runs a separate
+// content-script instance per open LinkedIn tab (manifest.json has no
+// all_frames coordination), plus the background service worker and the
+// popup — each has its own copy of this module and this refreshPromise, so
+// two tabs can each pass this guard and both call /auth/refresh with the
+// same stored token within milliseconds of each other. The backend's
+// tokenService.rotateRefreshToken has a short grace period specifically to
+// treat that cross-context race as benign rather than token theft — this
+// local guard just cuts down how often that grace period gets exercised.
 let refreshPromise: Promise<string> | null = null;
 
 async function doRefresh(): Promise<string> {
@@ -40,9 +48,18 @@ async function doRefresh(): Promise<string> {
     body: JSON.stringify({ refreshToken }),
   });
 
-  if (!response.ok) {
+  if (response.status === 401) {
+    // The refresh token itself was rejected (invalid/expired/genuinely
+    // revoked) — this is the one case that actually means "log out".
     await chrome.storage.local.remove(["user", "refreshToken"]);
     throw new Error("Session expired. Please login again.");
+  }
+  if (!response.ok) {
+    // Anything else (500, 429, a network blip surfaced as a bad response) is
+    // transient — the refresh token itself may still be perfectly valid.
+    // Don't wipe the session over it; let the caller fail this one request
+    // and try again later, same as any other API call would.
+    throw new Error(`Token refresh failed (${response.status}) — will retry later`);
   }
 
   const body = await response.json();
