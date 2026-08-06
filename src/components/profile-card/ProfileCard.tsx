@@ -256,26 +256,23 @@ export default function ProfileCard() {
         return false;
       };
 
-      // Only consider current positions that have a valid LinkedIn company page URL.
-      // External URLs (personal websites, company homepages) are excluded here —
-      // a second guard runs inside fetchCompanyData after we have the actual company data.
-      const allCurrent = result.experience.filter(isCurrentPosition);
-      const current = allCurrent.filter(
-        (exp: Experience) => !!extractCompanyIdFromUrl(exp.companyUrl ?? ""),
-      );
+      // Only consider current positions that have a valid LinkedIn company page URL
+      // (external URLs — personal websites, non-LinkedIn company homepages —
+      // can't be resolved to a syncable company).
+      const current = result.experience
+        .filter(isCurrentPosition)
+        .filter((exp: Experience) => !!extractCompanyIdFromUrl(exp.companyUrl ?? ""));
 
-      if (current.length === 0) {
-        if (allCurrent.length > 0) {
-          setErrorMessage("Current position found but no LinkedIn company page is associated. Cannot sync company data.");
-        } else {
-          setErrorMessage("No current companies found");
-        }
-      } else if (current.length === 1) {
+      if (current.length === 1) {
         await fetchCompanyData(current[0], result);
-      } else {
+      } else if (current.length > 1) {
         // Multiple current positions with valid LinkedIn company pages — show selection modal
         setCurrentCompanies(current);
         setShowModal(true);
+      } else {
+        // No current position with a linkable LinkedIn company page — sync the
+        // contact on its own rather than blocking the fetch entirely.
+        await fetchCompanyData(null, result);
       }
     } catch (err) {
       console.error("Error fetching profile:", err);
@@ -285,105 +282,42 @@ export default function ProfileCard() {
     }
   };
 
-  // Fetch company data and save to HubSpot
-  const fetchCompanyData = async (experience: Experience, profile: any) => {
-    if (!experience.companyUrl) {
-      setErrorMessage("Company URL not available");
-      return;
-    }
-
+  // Fetch company data (if any current position was resolved) and save the
+  // contact — and company, when there is one — to HubSpot. `experience` is
+  // null when the profile has no current position with a linkable LinkedIn
+  // company page; the contact is still synced on its own in that case.
+  const fetchCompanyData = async (experience: Experience | null, profile: any) => {
     setFetchingCompany(true);
     try {
-      const companyId = extractCompanyIdFromUrl(experience.companyUrl);
-      if (!companyId) {
-        throw new Error("Could not extract company ID");
-      }
+      let companyId: string | null = null;
+      let companyData: any = null;
 
-      // ── Try intercepted company data ──────────────────────────────────────
-      let companyData: any;
-      const interceptedCompany = getInterceptedCompany(companyId);
+      if (experience?.companyUrl) {
+        companyId = extractCompanyIdFromUrl(experience.companyUrl);
+        if (!companyId) {
+          throw new Error("Could not extract company ID");
+        }
 
-      if (interceptedCompany) {
-        console.log("[HubLead] Using intercepted company data for:", companyId);
-        try {
-          companyData = parseCompanyData(interceptedCompany.raw);
-        } catch {
-          console.log("[HubLead] Intercepted company data parse failed — falling back to Voyager call");
+        // ── Try intercepted company data ────────────────────────────────────
+        const interceptedCompany = getInterceptedCompany(companyId);
+
+        if (interceptedCompany) {
+          console.log("[HubLead] Using intercepted company data for:", companyId);
+          try {
+            companyData = parseCompanyData(interceptedCompany.raw);
+          } catch {
+            console.log("[HubLead] Intercepted company data parse failed — falling back to Voyager call");
+            companyData = await fetchLinkedInCompany(companyId);
+          }
+        } else {
+          console.log("[HubLead] No intercepted company data — falling back to Voyager call");
           companyData = await fetchLinkedInCompany(companyId);
         }
-      } else {
-        console.log("[HubLead] No intercepted company data — falling back to Voyager call");
-        companyData = await fetchLinkedInCompany(companyId);
       }
 
       // Contact info: always direct API (not reliably interceptable).
       // Fetched for the *viewed* profile, so these websites belong to the lead.
       const contactInfo = await fetchLinkedInContactInfo(profile.basicInfo.publicIdentifier);
-
-      // Personal-brand guard: catches freelancers/solo operators whose "employer"
-      // is really their own brand page — syncing that would set a personal website
-      // as the primary company in HubSpot.
-      //
-      // A matching website domain alone is NOT sufficient evidence: employees very
-      // commonly list their employer's site as their own profile website, which
-      // made this block legitimate companies. We now require the domain match AND
-      // at least one signal that the company is genuinely a one-person entity.
-      const extractHostname = (url?: string | null): string | null => {
-        if (!url) return null;
-        try {
-          const src = /^https?:\/\//i.test(url.trim())
-            ? url.trim()
-            : `https://${url.trim()}`;
-          return new URL(src).hostname.replace(/^www\./i, "").toLowerCase();
-        } catch {
-          return null;
-        }
-      };
-      const companyWebDomain = extractHostname(companyData.basicInfo.website);
-      const personalDomains = (contactInfo.websites ?? [])
-        .map((u: string) => extractHostname(u))
-        .filter(Boolean);
-
-      const domainsMatch = !!(
-        companyWebDomain && personalDomains.includes(companyWebDomain)
-      );
-
-      // Signal 1 — headcount. LinkedIn reports staff as a range, e.g. {start: 2,
-      // end: 10}. A range topping out at one person is a solo page. Large
-      // companies use an open-ended range (no `end`), so an absent `end` must
-      // never count as a personal brand.
-      const staffRangeEnd = companyData.basicInfo.companySize?.end;
-      const isSoloCompany =
-        typeof staffRangeEnd === "number" && staffRangeEnd <= 1;
-
-      // Signal 2 — the company is named after the contact ("Jane Doe Consulting").
-      // Compare alphanumerics only so punctuation and spacing don't matter.
-      const normalizeName = (s?: string | null): string =>
-        (s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
-      const contactFullName = normalizeName(
-        `${profile?.basicInfo?.firstName ?? ""}${profile?.basicInfo?.lastName ?? ""}`,
-      );
-      const normalizedCompanyName = normalizeName(companyData.basicInfo.name);
-      const nameMatchesContact =
-        !!contactFullName &&
-        !!normalizedCompanyName &&
-        (normalizedCompanyName.includes(contactFullName) ||
-          contactFullName.includes(normalizedCompanyName));
-
-      const guardWillBlock =
-        domainsMatch && (isSoloCompany || nameMatchesContact);
-
-      if (guardWillBlock) {
-        const reason = isSoloCompany
-          ? "its LinkedIn page lists no more than one employee"
-          : "it is named after them";
-        const contactFirstName = profile?.basicInfo?.firstName || "this person";
-
-        setErrorMessage(
-          `"${experience.company}" looks like ${contactFirstName}'s personal brand rather than an employer: it uses their personal website (${companyData.basicInfo.website}) and ${reason}. Please select their actual employer company.`,
-        );
-        return;
-      }
 
       // Build payload for backend
       const finalPayload = {
@@ -392,8 +326,8 @@ export default function ProfileCard() {
           profileUrl: window.location.href,
           publicProfileUrl: `https://linkedin.com/in/${profile.basicInfo.publicIdentifier}`,
           headline: profile.basicInfo.headline || "",
-          selectedRole: experience.title || "",
-          selectedCompany: experience.company || "",
+          selectedRole: experience?.title || "",
+          selectedCompany: experience?.company || "",
           email: contactInfo.email,
           phone: contactInfo.phone,
           website: contactInfo.websites?.[0] || "",
@@ -413,18 +347,30 @@ export default function ProfileCard() {
             location: exp.location || "",
           })),
         },
-        company: {
-          name: companyData.basicInfo.name || "",
-          companyUrl: experience.companyUrl || "",
-          linkedinCompanyId: companyId || "",
-          website: companyData.basicInfo.website || "",
-          locationCity: companyData.basicInfo.headquarters?.city || "",
-          locationState:
-            companyData.basicInfo.headquarters?.geographicArea || "",
-          locationCountry: companyData.basicInfo.headquarters?.country || "",
-          employeeCount: companyData.basicInfo.companySize?.start || 0,
-          industry: companyData.basicInfo.industry || "",
-        },
+        company: companyData
+          ? {
+              name: companyData.basicInfo.name || "",
+              companyUrl: experience?.companyUrl || "",
+              linkedinCompanyId: companyId || "",
+              website: companyData.basicInfo.website || "",
+              locationCity: companyData.basicInfo.headquarters?.city || "",
+              locationState:
+                companyData.basicInfo.headquarters?.geographicArea || "",
+              locationCountry: companyData.basicInfo.headquarters?.country || "",
+              employeeCount: companyData.basicInfo.companySize?.start || 0,
+              industry: companyData.basicInfo.industry || "",
+            }
+          : {
+              name: "",
+              companyUrl: "",
+              linkedinCompanyId: "",
+              website: "",
+              locationCity: "",
+              locationState: "",
+              locationCountry: "",
+              employeeCount: 0,
+              industry: "",
+            },
       };
 
       const response = await linkedinApi.saveContactAndCompany(finalPayload);
