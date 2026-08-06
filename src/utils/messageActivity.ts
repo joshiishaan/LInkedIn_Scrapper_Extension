@@ -16,7 +16,7 @@
  *   - readCount      : filled separately from seen-receipts (0 here)
  */
 
-import type { MessageActivityPayload } from "../services/messagesApi";
+import type { MessageActivityPayload, MessageEventEntry } from "../services/messagesApi";
 
 function extractAco(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -220,6 +220,13 @@ export function deriveActivity(
   readWatermark = 0, // recipient's latest seenAt; our messages ≤ this are "read"
 ): MessageActivityPayload {
   const msgs = (Array.isArray(elements) ? elements : [])
+    // Exclude system notifications (e.g. "Message request accepted") — LinkedIn
+    // includes these in the same messages list as real chat messages, tagged
+    // with messageBodyRenderFormat "SYSTEM" instead of "DEFAULT". They have a
+    // real sender/deliveredAt like any message, so left in they inflate
+    // sent/receivedCount and corrupt the respondsToAt chain (a real reply ends
+    // up "responding to" the system marker instead of the actual prior message).
+    .filter((e) => e?.messageBodyRenderFormat !== "SYSTEM")
     .map((e) => {
       const actor = e?.actor ?? e?.sender;
       const member = actor?.participantType?.member;
@@ -241,6 +248,14 @@ export function deriveActivity(
   let readCount = 0;
   let hasReply = false;
   let prevSelf = false;
+  let sawSelf = false; // true once the first SENT message has been walked
+  let sawReceived = false; // true once the first RECEIVED message has been walked
+  let prevAt: number | null = null; // previous message's timestamp, either side
+  const events: MessageEventEntry[] = [];
+  // The rep's IANA timezone, read from the browser — same source as the
+  // existing userTimeZone pattern (never stored per-user server-side).
+  // Quiet-hours lateness math on the backend is evaluated in this zone.
+  const selfTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   // Both identities: participant (receiver) and the app user's own (sender).
   let participantLinkedinId: string | null = null;
@@ -252,9 +267,15 @@ export function deriveActivity(
 
   for (const m of msgs) {
     const isSelf = (!!selfId && m.senderAco === selfId) || m.isSelfActor;
+    const messageId = `${m.at}:${m.senderAco ?? ""}`;
+    // What THIS message is a response to — the previous message, either side.
+    const respondsToAt = prevAt !== null ? String(prevAt) : undefined;
     if (isSelf) {
       sentCount += 1;
-      if (prevSelf) followUpCount += 1; // consecutive self message = re-ping
+      const isFollowUp = prevSelf; // consecutive self message = re-ping
+      if (isFollowUp) followUpCount += 1;
+      const isFirstTouch = !sawSelf; // the very first message WE ever sent here
+      sawSelf = true;
       if (readWatermark > 0 && m.at <= readWatermark) readCount += 1; // seen by recipient
       prevSelf = true;
       if (!selfName) {
@@ -262,16 +283,37 @@ export function deriveActivity(
         selfName = memberName(m.member);
         selfProfileUrl = memberProfileUrl(m.member);
       }
+      events.push({
+        messageId,
+        type: "SENT",
+        occurredAt: String(m.at),
+        isFirstTouch,
+        isFollowUp,
+        respondsToAt,
+        selfTimeZone,
+      });
     } else {
       receivedCount += 1;
+      // The first reply from them, and only once we'd actually sent something.
+      const isFirstReply = !sawReceived && sentCount > 0;
       if (sentCount > 0) hasReply = true; // they answered after we sent
+      sawReceived = true;
       prevSelf = false;
       if (!participantLinkedinId) {
         participantLinkedinId = m.senderAco;
         participantName = memberName(m.member);
         participantProfileUrl = memberProfileUrl(m.member);
       }
+      events.push({
+        messageId,
+        type: "RECEIVED",
+        occurredAt: String(m.at),
+        isFirstReply,
+        respondsToAt,
+        selfTimeZone,
+      });
     }
+    prevAt = m.at;
   }
 
   const total = msgs.length;
@@ -293,5 +335,6 @@ export function deriveActivity(
     isConversation,
     ...(msgs.length && { firstMessageAt: String(msgs[0].at) }),
     ...(msgs.length && { lastMessageAt: String(msgs[msgs.length - 1].at) }),
+    events,
   };
 }

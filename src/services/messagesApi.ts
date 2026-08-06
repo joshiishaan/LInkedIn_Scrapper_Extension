@@ -1,6 +1,24 @@
 // Message-activity metrics API (per-user LinkedIn messaging stats).
 import { API_BASE_URL, getAuthHeaders, throwApiError } from "./_apiBase";
 
+// One entry per message, appended to the backend's append-only message-events
+// log so the report's chart can bucket by when each message actually
+// happened rather than a conversation's aggregate lastMessageAt.
+export interface MessageEventEntry {
+  messageId: string;
+  type: "SENT" | "RECEIVED";
+  occurredAt: string;
+  isFirstTouch?: boolean;
+  isFollowUp?: boolean;
+  isFirstReply?: boolean;
+  // The immediately preceding message's occurredAt (either side) — what this
+  // message is a response to. Undefined for the conversation's first message.
+  respondsToAt?: string;
+  // The rep's IANA timezone at record time (browser-sourced). Powers the Late
+  // Messages report's quiet-hours deadline math on the backend.
+  selfTimeZone?: string;
+}
+
 export interface MessageActivityPayload {
   conversationKey: string;
   participantLinkedinId?: string;
@@ -17,6 +35,7 @@ export interface MessageActivityPayload {
   isConversation: boolean;
   firstMessageAt?: string;
   lastMessageAt?: string;
+  events?: MessageEventEntry[];
 }
 
 export interface MessageStats {

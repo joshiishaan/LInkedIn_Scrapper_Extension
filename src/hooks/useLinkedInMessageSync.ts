@@ -4,6 +4,7 @@ import {
   fetchMessengerConversationMessagesWithVariables,
 } from "../utils/linkedinApi";
 import { linkedinApi } from "../services/api";
+import { DEBUG, dlog } from "../utils/debug";
 import {
   type HlNetworkCallEvent,
   type Party,
@@ -59,12 +60,31 @@ function _cacheNetworkCall(event: Event) {
 window.addEventListener("HL_NETWORK_CALL", _cacheNetworkCall as EventListener);
 
 export function useLinkedInMessageSync() {
-  const [conversationKey, setConversationKey] = useState<string | null>(null);
-  const [messages, setMessages] = useState<any[]>([]);
+  // Seed from the module-level cache during INITIALISATION rather than in a
+  // mount effect. The interceptor caches the last messenger response before
+  // this hook mounts, so the previous code set that state inside useEffect —
+  // which renders once with empty state, then immediately re-renders with the
+  // real values (a cascading render React now warns about). Lazy initialisers
+  // run exactly once, at the same point the effect would have, and land the
+  // values in the FIRST render instead.
+  const hasCache = _cachedKey !== null && _cachedMessages.length > 0;
+
+  const [conversationKey, setConversationKey] = useState<string | null>(() =>
+    hasCache ? _cachedKey : null,
+  );
+  const [messages, setMessages] = useState<any[]>(() =>
+    hasCache ? _cachedMessages : [],
+  );
   const [isButtonDisabled, setIsButtonDisabled] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const lastVariablesRef = useRef<string | null>(null);
-  const lastHeadersRef = useRef<Record<string, string> | null>(null);
+  // useRef only honours its argument on the first render, so these seed once —
+  // matching the old effect, which also guarded on hasCache before assigning.
+  const lastVariablesRef = useRef<string | null>(
+    hasCache ? _cachedVariables : null,
+  );
+  const lastHeadersRef = useRef<Record<string, string> | null>(
+    hasCache ? _cachedHeaders : null,
+  );
   const lastLoggedCountRef = useRef(0);
   const lastSyncedMaxTimestampRef = useRef<number | null>(null);
 
@@ -277,11 +297,13 @@ export function useLinkedInMessageSync() {
       }
 
       const body = { conversationKey, messages: payloadMessages, userTimeZone };
-      console.log("[Scrapper Debug] Syncing messages to backend:", body);
+      // `body` carries full message text — debug-gated so it never reaches a
+      // user's console in a release build.
+      dlog("[Scrapper Debug] Syncing messages to backend:", body);
 
       try {
         await linkedinApi.upsertMessages(body);
-        console.log("[Scrapper Debug] upsert-messages succeeded.");
+        dlog("[Scrapper Debug] upsert-messages succeeded.");
 
         const maxTs = messages.reduce(
           (max: number, msg) =>
@@ -324,33 +346,31 @@ export function useLinkedInMessageSync() {
       if (domRecipient) recipient = domRecipient;
     }
 
-    console.group(
-      `[HubLead-style] Loaded LinkedIn messages for conversation ${conversationKey}`,
-    );
-    console.log("Participants (approx):", { sender, recipient });
-    console.table(
-      newMessages.map((msg) => ({
-        ...simplifyMessage(msg),
-        senderDistance: msg.sender?.participantType?.member?.distance ?? null,
-        receiverName: recipient?.name ?? null,
-        receiverProfileUrl: recipient?.profileUrl ?? null,
-      })),
-    );
-    console.groupEnd();
+    // Debug-only. This prints message bodies, participant names and profile
+    // URLs — private DM content — so it must never run in a release build. The
+    // whole block is guarded (not just switched to dlog) because the .map()
+    // below allocates a full copy of every loaded message.
+    if (DEBUG) {
+      console.group(
+        `[HubLead-style] Loaded LinkedIn messages for conversation ${conversationKey}`,
+      );
+      dlog("Participants (approx):", { sender, recipient });
+      console.table(
+        newMessages.map((msg) => ({
+          ...simplifyMessage(msg),
+          senderDistance: msg.sender?.participantType?.member?.distance ?? null,
+          receiverName: recipient?.name ?? null,
+          receiverProfileUrl: recipient?.profileUrl ?? null,
+        })),
+      );
+      console.groupEnd();
+    }
 
     lastLoggedCountRef.current = messages.length;
     setIsButtonDisabled(true);
   }, [conversationKey, messages]);
 
-  // Seed state from the module-level cache on mount.
-  useEffect(() => {
-    if (_cachedKey && _cachedMessages.length > 0) {
-      setConversationKey(_cachedKey);
-      setMessages(_cachedMessages);
-      lastVariablesRef.current = _cachedVariables;
-      lastHeadersRef.current = _cachedHeaders;
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // (Cache seeding now happens in the state initialisers above.)
 
   useEffect(() => {
     const handler = (e: Event) => handleNetworkCall(e);
