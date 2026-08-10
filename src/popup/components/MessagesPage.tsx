@@ -9,25 +9,29 @@
 
 import { useState, useEffect } from "react";
 import { messagesApi } from "../../services/api";
-import type { MessageStats } from "../../services/messagesApi";
+import type { MessageStatsToday } from "../../services/messagesApi";
+import { todayLocalUtcWindow } from "../../utils/dateWindow";
 
 interface Props {
   onBack: () => void;
 }
 
 export default function MessagesPage({ onBack }: Props) {
-  const [stats, setStats] = useState<MessageStats | null>(null);
+  const [stats, setStats] = useState<MessageStatsToday | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     load();
   }, []);
 
+  // Recomputed fresh on every load (including manual Refresh) — so reopening
+  // the popup after local midnight naturally starts counting from the new
+  // day, with no separate reset logic needed.
   const load = async () => {
     setLoading(true);
     try {
-      const res = await messagesApi.getStats();
-      setStats(res.data.user);
+      const res = await messagesApi.getStatsToday(todayLocalUtcWindow());
+      setStats(res.data);
     } catch (err) {
       console.error("Failed to load message stats", err);
     } finally {
@@ -38,12 +42,15 @@ export default function MessagesPage({ onBack }: Props) {
   const initialLoading = loading && !stats; // first load → body spinner
   const refreshing = loading && !!stats; //     refresh   → button spinner
 
+  // Matches the Messages report's own metrics exactly — no "Read" (no daily
+  // data exists anywhere, only a lifetime aggregate) or "Convos" tile;
+  // historical/lifetime views live in the web dashboards now.
   const tiles: Array<[string, number | undefined]> = [
     ["Sent", stats?.sent],
-    ["Read", stats?.read],
+    ["Received", stats?.received],
+    ["Fresh", stats?.fresh],
+    ["Follow-ups", stats?.followups],
     ["Replied", stats?.replied],
-    ["Follow-ups", stats?.followUps],
-    ["Convos", stats?.conversations],
   ];
 
   return (
@@ -52,7 +59,7 @@ export default function MessagesPage({ onBack }: Props) {
         <button className="back-btn" onClick={onBack} title="Back" aria-label="Back">
           ←
         </button>
-        <h2>Messages</h2>
+        <h2>Messages · Today</h2>
       </div>
 
       <div className="integration-section">

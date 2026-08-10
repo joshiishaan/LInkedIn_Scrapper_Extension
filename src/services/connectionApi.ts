@@ -25,6 +25,16 @@ export interface ConnectionStatsResponse {
   global: ConnectionStats;
 }
 
+// Today-only counters (see backend's getConnectionStatsToday) — deliberately
+// excludes `pending`, a live/cumulative snapshot rather than something that
+// resets at midnight.
+export interface ConnectionStatsToday {
+  sent: number;
+  accepted: number;
+  withdrawn: number;
+  expired: number;
+}
+
 export interface ReconcilePayload {
   stillPendingIds: string[];
   connected: {
@@ -123,6 +133,21 @@ export const connectionApi = {
     });
     if (!response.ok)
       await throwApiError(response, "Failed to load connection stats");
+    return response.json();
+  },
+
+  // Today-only counters for the popup — see backend's getConnectionStatsToday.
+  getStatsToday: async (window: {
+    from: string;
+    to: string;
+  }): Promise<{ data: ConnectionStatsToday }> => {
+    const params = new URLSearchParams(window);
+    const response = await fetch(
+      `${API_BASE_URL}/connections/stats/today?${params.toString()}`,
+      { headers: await getAuthHeaders() },
+    );
+    if (!response.ok)
+      await throwApiError(response, "Failed to load today's connection stats");
     return response.json();
   },
 };

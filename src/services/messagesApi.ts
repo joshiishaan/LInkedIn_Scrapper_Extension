@@ -55,6 +55,18 @@ export interface MessageStatsResponse {
   global: MessageStats;
 }
 
+// Today-only counters (see backend's getMessageStatsToday) — read from the
+// per-message event log, not message_activity's lifetime conversation
+// aggregates (which have no per-day breakdown), so the tile set is different
+// from MessageStats above: matches the Messages report's own metrics exactly.
+export interface MessageStatsToday {
+  fresh: number;
+  followups: number;
+  sent: number;
+  received: number;
+  replied: number;
+}
+
 export const messagesApi = {
   // Upsert a conversation's derived metrics.
   recordActivity: async (payload: MessageActivityPayload) => {
@@ -75,6 +87,21 @@ export const messagesApi = {
     });
     if (!response.ok)
       await throwApiError(response, "Failed to load message stats");
+    return response.json();
+  },
+
+  // Today-only counters for the popup — see backend's getMessageStatsToday.
+  getStatsToday: async (window: {
+    from: string;
+    to: string;
+  }): Promise<{ data: MessageStatsToday }> => {
+    const params = new URLSearchParams(window);
+    const response = await fetch(
+      `${API_BASE_URL}/messages/stats/today?${params.toString()}`,
+      { headers: await getAuthHeaders() },
+    );
+    if (!response.ok)
+      await throwApiError(response, "Failed to load today's message stats");
     return response.json();
   },
 };

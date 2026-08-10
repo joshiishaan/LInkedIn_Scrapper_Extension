@@ -5,7 +5,8 @@
 
 import { useState, useEffect } from "react";
 import { connectionApi } from "../../services/api";
-import type { ConnectionStats } from "../../services/connectionApi";
+import type { ConnectionStatsToday } from "../../services/connectionApi";
+import { todayLocalUtcWindow } from "../../utils/dateWindow";
 
 interface Props {
   onBack: () => void;
@@ -37,7 +38,7 @@ function requestSync(tabId: number): Promise<any> {
 }
 
 export default function ConnectionsPage({ onBack }: Props) {
-  const [stats, setStats] = useState<ConnectionStats | null>(null);
+  const [stats, setStats] = useState<ConnectionStatsToday | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
@@ -46,11 +47,14 @@ export default function ConnectionsPage({ onBack }: Props) {
     loadConnectionStats();
   }, []);
 
+  // Recomputed fresh on every load (including the manual "Sync now" refresh
+  // below) — so reopening the popup after local midnight naturally starts
+  // counting from the new day, with no separate reset logic needed.
   const loadConnectionStats = async () => {
     setStatsLoading(true);
     try {
-      const res = await connectionApi.getStats();
-      setStats(res.data.user);
+      const res = await connectionApi.getStatsToday(todayLocalUtcWindow());
+      setStats(res.data);
     } catch (err) {
       console.error("Failed to load connection stats", err);
     } finally {
@@ -103,9 +107,11 @@ export default function ConnectionsPage({ onBack }: Props) {
     }
   };
 
+  // No "Pending" tile: that's a live/cumulative outstanding count, not
+  // something that resets at midnight — historical + snapshot views live in
+  // the web dashboards now.
   const tiles: Array<[string, number | undefined]> = [
     ["Sent", stats?.sent],
-    ["Pending", stats?.pending],
     ["Accepted", stats?.accepted],
     ["Expired", stats?.expired],
     ["Withdrawn", stats?.withdrawn],
@@ -117,7 +123,7 @@ export default function ConnectionsPage({ onBack }: Props) {
         <button className="back-btn" onClick={onBack} title="Back" aria-label="Back">
           ←
         </button>
-        <h2>Connections</h2>
+        <h2>Connections · Today</h2>
       </div>
 
       <div className="integration-section">
