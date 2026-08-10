@@ -19,6 +19,7 @@ import {
   extractReadWatermarkDeep,
   extractOtherParticipant,
   extractConversationParticipants,
+  extractConversationMeta,
 } from "../utils/messageActivity";
 import { extractAllLoadedMessages } from "../utils/messageSyncHelpers";
 import { DEBUG, dlog, dwarn, derror } from "../utils/debug";
@@ -30,11 +31,16 @@ interface ParticipantHint {
   name?: string | null;
   profileUrl?: string | null;
 }
+interface ConversationMeta {
+  createdAt: number | null;
+  creatorId: string | null;
+}
 interface ConvState {
   elements?: any[];
   watermark: number;
   sig: string;
   hint?: ParticipantHint; // recipient identity when they never replied
+  meta?: ConversationMeta; // LinkedIn's own conversation-creation record — see deriveActivity
 }
 const convState = new Map<string, ConvState>();
 
@@ -105,7 +111,7 @@ async function recordIfChanged(key: string): Promise<void> {
   }
 
   const actor = await fetchLoggedInLinkedInIdentity();
-  const payload = deriveActivity(st.elements, actor?.memberId ?? null, key, st.watermark);
+  const payload = deriveActivity(st.elements, actor?.memberId ?? null, key, st.watermark, st.meta);
 
   // Fill the recipient identity for one-sided (no-reply) threads from the
   // authoritative network hint (the conversation's own response / seen-receipt).
@@ -121,8 +127,14 @@ async function recordIfChanged(key: string): Promise<void> {
   }
 
   // Include the participant NAME (not just presence) so a later, cleaner name
-  // re-records and overwrites an earlier junky one.
-  const sig = `${payload.sentCount}:${payload.receivedCount}:${payload.readCount}:${payload.hasReply ? 1 : 0}:${payload.participantName ?? ""}`;
+  // re-records and overwrites an earlier junky one. Also include the
+  // conversation meta (createdAt/creatorId): it can arrive AFTER this
+  // conversation's messages were already recorded once (e.g. the inbox list
+  // loads on a later pass), and its arrival can flip an already-sent event's
+  // isFirstTouch without changing any of the counts above — without it in the
+  // signature, that correction would be silently swallowed by the "nothing
+  // new" short-circuit below.
+  const sig = `${payload.sentCount}:${payload.receivedCount}:${payload.readCount}:${payload.hasReply ? 1 : 0}:${payload.participantName ?? ""}:${st.meta?.createdAt ?? ""}:${st.meta?.creatorId ?? ""}`;
   dlog("[HL-DBG] participant name =", JSON.stringify(payload.participantName ?? null)); // [HL-DBG]
   dlog("[HL-DBG] read: watermark=", st.watermark, "readCount=", payload.readCount, "of sent", payload.sentCount, "for", key); // [HL-DBG]
   // [HL-DBG] show what we derived and whether it's a change.
@@ -211,12 +223,13 @@ async function handleEvent(detail: any): Promise<void> {
     if (detail.type === "HL_INTERNAL_LINKEDIN_CONVERSATION") {
       const selfId = (await fetchLoggedInLinkedInIdentity())?.memberId ?? null;
       const participants = extractConversationParticipants(detail.responseBody, selfId);
-      dlog("[HL-DBG] conversation participants:", participants.length);
+      const metas = extractConversationMeta(detail.responseBody);
+      dlog("[HL-DBG] conversation participants:", participants.length, "meta:", metas.length);
 
-      // Apply every hint BEFORE recording. The inbox list can carry 25+
+      // Apply every hint/meta BEFORE recording. The inbox list can carry 25+
       // conversations, and recording inside the same loop made each upsert wait
       // on the previous one's round trip.
-      const pending: string[] = [];
+      const pending = new Set<string>();
       for (const p of participants) {
         const cst = convState.get(p.conversationKey) ?? { watermark: 0, sig: "" };
         cst.hint = {
@@ -227,11 +240,22 @@ async function handleEvent(detail: any): Promise<void> {
         convState.set(p.conversationKey, cst);
         // Only conversations we already hold messages for can produce a record;
         // the rest would be a no-op round trip through recordIfChanged.
-        if (cst.elements?.length) pending.push(p.conversationKey);
+        if (cst.elements?.length) pending.add(p.conversationKey);
+      }
+      // createdAt/creator never change once set — a conversation's creation
+      // record is fixed at the moment it happened — so first-write-wins is
+      // fine; there's nothing to reconcile on a later, repeat sighting.
+      for (const m of metas) {
+        const cst = convState.get(m.conversationKey) ?? { watermark: 0, sig: "" };
+        if (!cst.meta && (m.createdAt != null || m.creatorId != null)) {
+          cst.meta = { createdAt: m.createdAt, creatorId: m.creatorId };
+        }
+        convState.set(m.conversationKey, cst);
+        if (cst.elements?.length) pending.add(m.conversationKey);
       }
 
       // Settle rather than all: one failed upsert must not abort the others.
-      await Promise.allSettled(pending.map((k) => recordIfChanged(k)));
+      await Promise.allSettled([...pending].map((k) => recordIfChanged(k)));
       return;
     }
 

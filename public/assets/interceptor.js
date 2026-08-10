@@ -114,6 +114,27 @@
         }
       }
 
+      // [HL-DBG] temporary: dump the FULL request/response body for invitation
+      // calls (send/withdraw/enrich) — remove once we've confirmed what
+      // fields LinkedIn's own invitation API actually returns, so
+      // useLinkedInConnectionTracker.ts can be written against a real
+      // payload instead of the current requestBody-only regex extraction.
+      if (detail.type === "HL_INTERNAL_LINKEDIN_INVITATION") {
+        try {
+          dbg(
+            "[HL-DBG] invitation",
+            detail.invitationKind,
+            "status=",
+            detail.statusCode,
+            "\nurl:", detail.callUrl,
+            "\nrequestBody:", JSON.stringify(detail.requestBody, null, 2),
+            "\nresponseBody:", JSON.stringify(detail.responseBody, null, 2),
+          );
+        } catch (e) {
+          /* ignore */
+        }
+      }
+
       // IMPORTANT: this interceptor runs in the MAIN world (registered as a
       // world:"MAIN" content script). A MAIN-world script's window.dispatchEvent
       // does NOT reach listeners in the isolated content-script world, so we do

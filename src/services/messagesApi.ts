@@ -17,6 +17,10 @@ export interface MessageEventEntry {
   // The rep's IANA timezone at record time (browser-sourced). Powers the Late
   // Messages report's quiet-hours deadline math on the backend.
   selfTimeZone?: string;
+  // The message's own text (LinkedIn's `msg.body.text`) — powers the
+  // Messages report's in-app chat popup instead of a deep link to LinkedIn's
+  // own chat page.
+  text?: string;
 }
 
 export interface MessageActivityPayload {

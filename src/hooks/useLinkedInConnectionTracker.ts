@@ -83,6 +83,25 @@ function extractName(...sources: unknown[]): string | null {
   return null;
 }
 
+// Extract the target's full profile URL from a request body when present.
+// VERIFIED live (2026-08-07): an SDUI "addaAddConnection" send from a People
+// You May Know card (clientContext "ProfilePYMK" — NOT the target's own
+// profile page) still carried "profileCanonicalUrl":"https://www.linkedin.com/
+// in/…" in its payload. So this is available on at least some off-profile-page
+// send surfaces, not just when window.location happens to be the target's
+// /in/ page — a strictly better (superset) source than the onProfilePage
+// check below, at zero extra network cost since the body is already captured.
+function extractProfileUrl(...sources: unknown[]): string | null {
+  for (const src of sources) {
+    if (src == null) continue;
+    const text = typeof src === "string" ? src : safeStringify(src);
+    if (!text) continue;
+    const url = text.match(/"profileCanonicalUrl"\s*:\s*"([^"]*)"/)?.[1];
+    if (url) return url;
+  }
+  return null;
+}
+
 // Best-effort 1st-degree detection from an intercepted dash-profile element.
 // LinkedIn's shape varies, so we check the most common signals defensively.
 function isFirstDegreeConnection(raw: any): boolean {
@@ -165,19 +184,25 @@ async function processDetail(detail: any): Promise<void> {
       }
 
       // A send. Stamp the actor (the LinkedIn account logged into the browser,
-      // which may differ from the app user and may vary across sends) and the
-      // current profile URL when we're on the invitee's page.
+      // which may differ from the app user and may vary across sends).
       const actor = await fetchLoggedInLinkedInIdentity();
-      // The send body has no name; fall back to a name captured by an enrich
-      // event that already fired for this target.
+      // The classic Voyager send body has no name; fall back to a name
+      // captured by an enrich event that already fired for this target.
       const targetName =
         extractName(detail.requestBody) ||
         pendingTargetNames.get(targetLinkedinId);
+      // Prefer the profile URL LinkedIn's OWN send body already carries
+      // (present even off the target's profile page — e.g. a PYMK card send —
+      // see extractProfileUrl) over window.location, which only happens to be
+      // right when the send genuinely originated from the target's /in/ page.
       const onProfilePage = /\/in\//.test(window.location.pathname);
+      const targetProfileUrl =
+        extractProfileUrl(detail.requestBody) ||
+        (onProfilePage ? window.location.href : null);
       await connectionApi.trackSent({
         targetLinkedinId,
         ...(targetName && { targetName }),
-        ...(onProfilePage && { targetProfileUrl: window.location.href }),
+        ...(targetProfileUrl && { targetProfileUrl }),
         ...(actor && {
           actorLinkedinId: actor.memberId,
           ...(actor.name && { actorName: actor.name }),
