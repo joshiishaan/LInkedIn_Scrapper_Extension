@@ -220,11 +220,11 @@ export default function SyncedProfileView({
         setLeadSourceOptions(leadSources);
         setConnectedOnSourceOptions(connectedOnSources);
 
-        const defaultOwner = hubspotOwnerId
+        const defaultOwner = (hubspotOwnerId
           ? owners.find((o: any) => o.value === hubspotOwnerId)
           : owners.find(
               (o: any) => o.label === (ownerName || response.data.owner),
-            );
+            )) || { label: "Choose one", value: "" };
 
         const defaultLifecycle = lifecycles.find(
           (l: any) => l.label === lifecycle || l.value === lifecycle,
