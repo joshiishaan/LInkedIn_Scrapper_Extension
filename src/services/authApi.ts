@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "./_apiBase";
+import { API_BASE_URL, extractErrorMessage } from "./_apiBase";
 
 // Persist the auth result: the user (with its short-lived access token) and the
 // long-lived refresh token, in chrome.storage.local. Backend returns both in
@@ -24,7 +24,7 @@ export const authApi = {
     });
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      throw new Error(body.message || "Login failed");
+      throw new Error(extractErrorMessage(body, "Login failed. Please check your email and password."));
     }
     const json = await response.json();
     await persistAuth(json.data);
@@ -39,7 +39,7 @@ export const authApi = {
     });
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      throw new Error(body.message || "Signup failed");
+      throw new Error(extractErrorMessage(body, "Signup failed. Please try again."));
     }
     const json = await response.json();
     await persistAuth(json.data);
@@ -56,7 +56,7 @@ export const authApi = {
     });
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      throw new Error(body.message || "Failed to send reset code");
+      throw new Error(extractErrorMessage(body, "Couldn't send the reset code. Please try again."));
     }
     return response.json();
   },
@@ -70,7 +70,7 @@ export const authApi = {
     });
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      throw new Error(body.message || "Failed to reset password");
+      throw new Error(extractErrorMessage(body, "Couldn't reset your password. Please try again."));
     }
     return response.json();
   },

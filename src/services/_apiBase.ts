@@ -100,6 +100,23 @@ export const getAuthHeaders = async (): Promise<Record<string, string>> => {
   };
 };
 
+// express-validator failures (validateRequest.ts) send a generic top-level
+// message ("Validation failed") plus a per-field `errors` array whose `msg`
+// strings are the ACTUAL, already human-worded reason (every backend route
+// file writes plain-language .withMessage(...) text, e.g. "Company name is
+// required" — not raw field names). Prefer that detail ON ITS OWN rather than
+// prefixing it with the generic "Validation failed" wrapper, which just reads
+// as redundant noise once the detail is already a full sentence. Shared by
+// throwApiError below AND authApi.ts, which can't use throwApiError itself
+// (its 401 handling clears the session — wrong for a failed LOGIN attempt).
+export function extractErrorMessage(body: unknown, fallback: string): string {
+  const errors = (body as any)?.errors;
+  const details = Array.isArray(errors)
+    ? errors.map((e: any) => e?.msg).filter(Boolean).join("; ")
+    : "";
+  return details || (body as any)?.message || fallback;
+}
+
 export async function throwApiError(
   response: Response,
   fallback: string,
@@ -109,5 +126,5 @@ export async function throwApiError(
     throw new Error("Session expired. Please login again.");
   }
   const body = await response.json().catch(() => ({}));
-  throw new Error((body as any).message || fallback);
+  throw new Error(extractErrorMessage(body, fallback));
 }

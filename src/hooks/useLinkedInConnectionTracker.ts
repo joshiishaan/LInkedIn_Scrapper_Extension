@@ -102,6 +102,32 @@ function extractProfileUrl(...sources: unknown[]): string | null {
   return null;
 }
 
+// Last-resort name guess from the profile URL's own vanity slug — zero extra
+// network cost (pure string parsing of a URL we already captured), used only
+// when nothing else supplied a name. LinkedIn's AUTO-GENERATED slugs are
+// "first-last-<id>" (e.g. "dev-delvadia-044399246" -> "Dev Delvadia"); a
+// CUSTOM slug someone picked themselves (e.g. "johnsmith" or
+// "john-smith-marketing") doesn't reliably fit that shape, so this only acts
+// when the last segment looks like LinkedIn's own auto-generated id
+// (contains a digit, 4+ chars) — otherwise it returns null rather than
+// guessing wrong from a custom slug.
+function extractNameFromProfileUrl(url: string | null): string | null {
+  if (!url) return null;
+  const slug = url.match(/\/in\/([^/?#]+)/)?.[1];
+  if (!slug) return null;
+
+  const parts = decodeURIComponent(slug).split("-").filter(Boolean);
+  if (parts.length < 2) return null;
+
+  const last = parts[parts.length - 1];
+  const looksLikeAutoId = last.length >= 4 && /\d/.test(last);
+  const nameParts = looksLikeAutoId ? parts.slice(0, -1) : parts;
+  if (nameParts.length === 0) return null;
+
+  const name = nameParts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
+  return name || null;
+}
+
 // Best-effort 1st-degree detection from an intercepted dash-profile element.
 // LinkedIn's shape varies, so we check the most common signals defensively.
 function isFirstDegreeConnection(raw: any): boolean {
@@ -186,19 +212,24 @@ async function processDetail(detail: any): Promise<void> {
       // A send. Stamp the actor (the LinkedIn account logged into the browser,
       // which may differ from the app user and may vary across sends).
       const actor = await fetchLoggedInLinkedInIdentity();
-      // The classic Voyager send body has no name; fall back to a name
-      // captured by an enrich event that already fired for this target.
-      const targetName =
-        extractName(detail.requestBody) ||
-        pendingTargetNames.get(targetLinkedinId);
       // Prefer the profile URL LinkedIn's OWN send body already carries
       // (present even off the target's profile page — e.g. a PYMK card send —
       // see extractProfileUrl) over window.location, which only happens to be
       // right when the send genuinely originated from the target's /in/ page.
+      // Computed BEFORE targetName below — it's the last-resort name source.
       const onProfilePage = /\/in\//.test(window.location.pathname);
       const targetProfileUrl =
         extractProfileUrl(detail.requestBody) ||
         (onProfilePage ? window.location.href : null);
+      // The classic Voyager send body has no name. Fall back, in order: a
+      // name captured by an enrich event that already fired for this target,
+      // then a best-effort guess from the profile URL's own vanity slug (no
+      // extra network call — see extractNameFromProfileUrl for why this is
+      // safe/limited to LinkedIn's auto-generated slugs).
+      const targetName =
+        extractName(detail.requestBody) ||
+        pendingTargetNames.get(targetLinkedinId) ||
+        extractNameFromProfileUrl(targetProfileUrl);
       await connectionApi.trackSent({
         targetLinkedinId,
         ...(targetName && { targetName }),

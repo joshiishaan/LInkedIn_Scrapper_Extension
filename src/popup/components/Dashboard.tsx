@@ -24,6 +24,7 @@ export default function Dashboard({ user, onLogout }: Props) {
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [statusError, setStatusError] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   useEffect(() => {
     checkHubspotConnection();
@@ -46,6 +47,7 @@ export default function Dashboard({ user, onLogout }: Props) {
   // Initiate HubSpot OAuth flow
   const handleConnectHubspot = async () => {
     setConnecting(true);
+    setConnectError(null);
     try {
       const response = await hubspotApi.getConnectUrl();
       const authWindow = window.open(
@@ -63,6 +65,13 @@ export default function Dashboard({ user, onLogout }: Props) {
       }, 1000);
     } catch (err) {
       console.error("Failed to connect HubSpot", err);
+      // Previously silent — the button would just stop spinning with no
+      // explanation, leaving the user unsure whether anything happened.
+      setConnectError(
+        err instanceof Error
+          ? err.message
+          : "Couldn't start connecting to HubSpot. Please try again.",
+      );
       setConnecting(false);
     }
   };
@@ -173,6 +182,9 @@ export default function Dashboard({ user, onLogout }: Props) {
             >
               {connecting ? "Connecting..." : "Connect HubSpot"}
             </button>
+            {connectError && (
+              <span style={{ color: "#e53e3e", fontSize: "12px" }}>{connectError}</span>
+            )}
           </div>
         )}
       </div>
