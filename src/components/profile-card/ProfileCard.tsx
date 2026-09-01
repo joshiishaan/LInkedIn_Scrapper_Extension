@@ -256,22 +256,26 @@ export default function ProfileCard() {
         return false;
       };
 
-      // Only consider current positions that have a valid LinkedIn company page URL
-      // (external URLs — personal websites, non-LinkedIn company homepages —
-      // can't be resolved to a syncable company).
-      const current = result.experience
-        .filter(isCurrentPosition)
-        .filter((exp: Experience) => !!extractCompanyIdFromUrl(exp.companyUrl ?? ""));
+      // ALL current positions, regardless of whether they have a linkable
+      // LinkedIn company page — a position without one (private/unlisted
+      // company, or just a plain-text employer with no LinkedIn presence)
+      // still needs to be a selectable option, not silently dropped before
+      // the user even sees it. fetchCompanyData handles the no-companyUrl
+      // case: syncs the company by NAME ONLY (that's all we have for it),
+      // instead of throwing or skipping the company entirely.
+      const current = result.experience.filter(isCurrentPosition);
 
       if (current.length === 1) {
         await fetchCompanyData(current[0], result);
       } else if (current.length > 1) {
-        // Multiple current positions with valid LinkedIn company pages — show selection modal
+        // Multiple current positions — show selection modal (some may have
+        // no LinkedIn company page; CompanySelectionModal doesn't need one
+        // to render an option, it only shows title/company name/dates).
         setCurrentCompanies(current);
         setShowModal(true);
       } else {
-        // No current position with a linkable LinkedIn company page — sync the
-        // contact on its own rather than blocking the fetch entirely.
+        // No current position at all — sync the contact on its own rather
+        // than blocking the fetch entirely.
         await fetchCompanyData(null, result);
       }
     } catch (err) {
@@ -294,24 +298,27 @@ export default function ProfileCard() {
 
       if (experience?.companyUrl) {
         companyId = extractCompanyIdFromUrl(experience.companyUrl);
-        if (!companyId) {
-          throw new Error("Could not extract company ID");
-        }
 
-        // ── Try intercepted company data ────────────────────────────────────
-        const interceptedCompany = getInterceptedCompany(companyId);
+        // A companyUrl that doesn't resolve to a LinkedIn company id (rare,
+        // but possible) falls through to the name-only company below —
+        // same handling as no companyUrl at all, rather than failing the
+        // whole sync over one field we can't resolve.
+        if (companyId) {
+          // ── Try intercepted company data ────────────────────────────────────
+          const interceptedCompany = getInterceptedCompany(companyId);
 
-        if (interceptedCompany) {
-          console.log("[HubLead] Using intercepted company data for:", companyId);
-          try {
-            companyData = parseCompanyData(interceptedCompany.raw);
-          } catch {
-            console.log("[HubLead] Intercepted company data parse failed — falling back to Voyager call");
+          if (interceptedCompany) {
+            console.log("[HubLead] Using intercepted company data for:", companyId);
+            try {
+              companyData = parseCompanyData(interceptedCompany.raw);
+            } catch {
+              console.log("[HubLead] Intercepted company data parse failed — falling back to Voyager call");
+              companyData = await fetchLinkedInCompany(companyId);
+            }
+          } else {
+            console.log("[HubLead] No intercepted company data — falling back to Voyager call");
             companyData = await fetchLinkedInCompany(companyId);
           }
-        } else {
-          console.log("[HubLead] No intercepted company data — falling back to Voyager call");
-          companyData = await fetchLinkedInCompany(companyId);
         }
       }
 
@@ -360,17 +367,34 @@ export default function ProfileCard() {
               employeeCount: companyData.basicInfo.companySize?.start || 0,
               industry: companyData.basicInfo.industry || "",
             }
-          : {
-              name: "",
-              companyUrl: "",
-              linkedinCompanyId: "",
-              website: "",
-              locationCity: "",
-              locationState: "",
-              locationCountry: "",
-              employeeCount: 0,
-              industry: "",
-            },
+          : experience?.company
+            ? {
+                // This position's company has no linkable LinkedIn company
+                // page — all we know about it is the plain-text name
+                // LinkedIn itself shows on the profile. Sync that name
+                // alone rather than dropping the company entirely; every
+                // other field is genuinely unknown, not just unfetched.
+                name: experience.company,
+                companyUrl: "",
+                linkedinCompanyId: "",
+                website: "",
+                locationCity: "",
+                locationState: "",
+                locationCountry: "",
+                employeeCount: 0,
+                industry: "",
+              }
+            : {
+                name: "",
+                companyUrl: "",
+                linkedinCompanyId: "",
+                website: "",
+                locationCity: "",
+                locationState: "",
+                locationCountry: "",
+                employeeCount: 0,
+                industry: "",
+              },
       };
 
       const response = await linkedinApi.saveContactAndCompany(finalPayload);
